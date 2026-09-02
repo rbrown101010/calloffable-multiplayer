@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RUST — Free-For-All</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="gl"></canvas>
+
+  <!-- LOADING -->
+  <div id="loading" class="screen">
+    <div class="ld-wrap">
+      <div class="eyebrow">MULTIPLAYER · FREE-FOR-ALL</div>
+      <div class="big-title">RUST</div>
+      <div class="ld-bar"><div id="ld-fill"></div></div>
+      <div id="ld-text" class="mono">INITIALIZING</div>
+    </div>
+  </div>
+
+  <!-- MAIN MENU -->
+  <div id="menu" class="screen hidden">
+    <div class="menu-left">
+      <div class="eyebrow">MULTIPLAYER · FREE-FOR-ALL</div>
+      <div class="big-title">RUST</div>
+      <div class="menu-sub" id="menu-sub">3 ENEMIES · FIRST TO 10 KILLS · 10:00</div>
+      <div class="section-label">CONTROLS</div>
+      <div class="ctl-row"><button class="ctl-btn" data-control="mouse">MOUSE</button><button class="ctl-btn" data-control="trackpad">TRACKPAD</button></div>
+      <div class="section-label">SCORE LIMIT</div>
+      <div class="score-row"><input id="opt-score" type="range" min="1" max="30" step="1" value="10"><div id="opt-score-v" class="score-v">10</div><span class="score-l">KILLS</span></div>
+      <div class="section-label">DIFFICULTY</div>
+      <div class="ctl-row"><button class="ctl-btn" data-diff="recruit">RECRUIT</button><button class="ctl-btn" data-diff="regular">REGULAR</button><button class="ctl-btn" data-diff="veteran">VETERAN</button></div>
+      <div class="section-label">SELECT LOADOUT</div>
+      <div id="loadouts"></div>
+      <button id="btn-deploy" class="btn-primary">DEPLOY <span class="key">ENTER</span></button>
+      <div class="controls">
+        <div><b>WASD</b>MOVE</div><div><b>SHIFT</b>SPRINT</div><div><b>C</b>CROUCH · SLIDE</div><div><b>SPACE</b>JUMP</div>
+        <div class="ctl-mouse"><b>LMB</b>FIRE</div><div class="ctl-mouse"><b>RMB · ALT</b>AIM (HOLD)</div>
+        <div class="ctl-trackpad"><b>F</b>FIRE (HOLD)</div><div class="ctl-trackpad"><b>E</b>AIM (TOGGLE)</div>
+        <div><b>R</b>RELOAD</div><div><b>1 · 2 · Q</b>SWITCH</div>
+        <div><b>G</b>FRAG</div><div><b>3 · 4</b>UAV · AIRSTRIKE</div><div><b>TAB</b>SCOREBOARD</div><div><b>ESC</b>PAUSE</div>
+      </div>
+    </div>
+    <div class="menu-right">
+      <div id="loadout-detail"></div>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="crosshair"><i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i><i class="dot"></i></div>
+    <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+    <div id="scope" class="hidden">
+      <div class="scope-mask"></div>
+      <svg class="scope-reticle" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+        <g stroke="#000" stroke-width="2" fill="none">
+          <line x1="0" y1="500" x2="420" y2="500"/><line x1="580" y1="500" x2="1000" y2="500"/>
+          <line x1="500" y1="0" x2="500" y2="420"/><line x1="500" y1="580" x2="500" y2="1000"/>
+          <line x1="500" y1="440" x2="500" y2="470"/><line x1="500" y1="530" x2="500" y2="560"/>
+          <line x1="440" y1="500" x2="470" y2="500"/><line x1="530" y1="500" x2="560" y2="500"/>
+          <line x1="490" y1="600" x2="510" y2="600"/><line x1="485" y1="650" x2="515" y2="650"/><line x1="480" y1="700" x2="520" y2="700"/>
+          <line x1="400" y1="490" x2="400" y2="510"/><line x1="600" y1="490" x2="600" y2="510"/>
+        </g>
+        <circle cx="500" cy="500" r="3" fill="#d22"/>
+      </svg>
+      <div class="scope-info mono"><span id="scope-range">--- m</span></div>
+    </div>
+    <div id="nade-warn"><svg viewBox="0 0 40 40"><path d="M20 4 L26 12 L14 12 Z" fill="#ff3b2e"/><circle cx="20" cy="24" r="9" fill="none" stroke="#ff3b2e" stroke-width="3"/><rect x="17" y="12" width="6" height="5" fill="#ff3b2e"/></svg></div>
+    <div id="dmg-vignette"></div>
+    <div id="dmg-dirs"></div>
+    <div id="flash"></div>
+
+    <div id="minimap">
+      <canvas id="minimap-canvas" width="256" height="256"></canvas>
+      <div class="mm-frame"></div>
+      <div id="compass-heading" class="mono">N</div>
+    </div>
+
+    <div id="match">
+      <div id="timer" class="mono">10:00</div>
+      <div id="scores"><span id="score-me">0</span><span class="sep">·</span><span id="score-top">0</span></div>
+      <div class="mode-label">FREE-FOR-ALL</div>
+    </div>
+
+    <div id="killfeed"></div>
+
+    <div id="health">
+      <div class="hp-name">RILEY</div>
+      <div class="hp-bar"><div id="hp-fill"></div><div id="hp-lag"></div></div>
+      <div id="hp-num" class="mono">100</div>
+    </div>
+
+    <div id="streaks"></div>
+    <div id="weapon">
+      <div id="wp-name">ACR 6.8</div>
+      <div class="wp-ammo"><span id="ammo-mag">30</span><span class="ammo-sep">/</span><span id="ammo-res">180</span></div>
+      <div id="ammo-warn" class="mono"></div>
+      <div class="wp-meta"><span id="wp-mode">AUTO</span><span id="wp-secondary">USP .45</span></div>
+      <div class="wp-eq"><span id="eq-lethal"><b>G</b> FRAG ×1</span></div>
+    </div>
+
+    <div id="center-msgs"></div>
+    <div id="streak"></div>
+    <div id="hint" class="mono"></div>
+    <div id="respawn" class="hidden">
+      <div class="rs-killed">KILLED BY <span id="killer"></span></div>
+      <div class="rs-weapon mono" id="killer-weapon"></div>
+      <div class="rs-count">RESPAWNING IN <span id="respawn-count">5</span></div>
+    </div>
+    <div id="scoreboard" class="hidden">
+      <div class="sb-head"><span>FREE-FOR-ALL · RUST</span><span id="sb-timer" class="mono"></span></div>
+      <table><thead><tr><th>#</th><th class="l">PLAYER</th><th>SCORE</th><th>KILLS</th><th>DEATHS</th><th>K/D</th><th>STREAK</th></tr></thead><tbody id="sb-body"></tbody></table>
+    </div>
+  </div>
+
+  <!-- FINAL KILLCAM -->
+  <div id="killcam" class="hidden">
+    <div class="kc-top"><div class="eyebrow">FINAL KILLCAM</div><div class="kc-line"><span id="kc-killer">GHOST</span><span class="kc-w" id="kc-weapon">SCAR-H</span><span id="kc-victim">RILEY</span></div></div>
+    <div class="kc-bar"><div id="kc-fill"></div></div>
+    <div class="kc-skip mono">ENTER · SKIP</div>
+  </div>
+
+  <!-- PAUSE -->
+  <div id="pause" class="screen hidden">
+    <div class="pause-box">
+      <div class="eyebrow">PAUSED</div>
+      <div class="big-title sm">RUST</div>
+      <button id="btn-resume" class="btn-primary">RESUME</button>
+      <button id="btn-loadout" class="btn-secondary">CHANGE LOADOUT</button>
+      <button id="btn-quit" class="btn-secondary">END MATCH</button>
+      <div class="ctl-row" style="margin-top:18px"><button class="ctl-btn" data-control="mouse">MOUSE</button><button class="ctl-btn" data-control="trackpad">TRACKPAD</button></div>
+      <div class="settings">
+        <label>SENSITIVITY <input id="opt-sens" type="range" min="0.2" max="3" step="0.05" value="1"><span id="opt-sens-v" class="mono">1.00</span></label>
+        <label>FIELD OF VIEW <input id="opt-fov" type="range" min="70" max="110" step="1" value="90"><span id="opt-fov-v" class="mono">90</span></label>
+        <label>VOLUME <input id="opt-vol" type="range" min="0" max="1" step="0.05" value="0.8"><span id="opt-vol-v" class="mono">0.80</span></label>
+        <label>RENDER SCALE <input id="opt-scale" type="range" min="0.75" max="2" step="0.25" value="1.5"><span id="opt-scale-v" class="mono">1.50</span></label>
+        <label>WIND AMBIENCE <input id="opt-wind" type="range" min="0" max="2" step="0.1" value="1"><span id="opt-wind-v" class="mono">1.00</span></label>
+        <label>AIM MODE <select id="opt-ads"><option value="hold">HOLD (RMB / ALT)</option><option value="toggle">TOGGLE (RMB / ALT)</option></select><span></span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- END OF MATCH -->
+  <div id="end" class="screen hidden">
+    <div class="end-box">
+      <div class="eyebrow" id="end-eyebrow">MATCH OVER</div>
+      <div class="big-title" id="end-title">VICTORY</div>
+      <div id="end-stats"></div>
+      <table id="end-table"><thead><tr><th>#</th><th class="l">PLAYER</th><th>SCORE</th><th>K</th><th>D</th><th>K/D</th></tr></thead><tbody></tbody></table>
+      <button id="btn-again" class="btn-primary">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
