@@ -276,7 +276,9 @@ export class Gunplay {
       this.holsterT += dt;
       if (this.holsterT >= this.vm.holsterDur) {
         this.holstering = false; this.cur = this.pending; this.pending = -1; const ns = this.slot;
-        this.vm.setWeapon(ns.def, ns.model!); this.drawing = true; this.drawT = 0; this.audio.weaponSwitch(); this.emit({ type: 'switch', def: ns.def }); this.emit({ type: 'ammo' });
+        this.vm.setWeapon(ns.def, ns.model!); this.drawing = true; this.drawT = 0;
+        if (this.audio.has('draw_1')) this.audio.play(this.audio.pick(['draw_1', 'draw_2']), { vol: 0.6, rateVar: 0.05 }); else this.audio.weaponSwitch();
+        this.emit({ type: 'switch', def: ns.def }); this.emit({ type: 'ammo' });
       }
       this.adsHeld = false; this.adsLatched = false; this.vm.update(dt, this.vmState()); return;
     }
@@ -353,8 +355,9 @@ export class Gunplay {
     this.reloading = true; this.reloadT = 0; this.magDone = false;
     this.reloadDur = slot.mag === 0 && d.mode !== 'pump' ? d.reloadEmptyTime : d.reloadTime;
     this.vm.reloadT = 0; this.vm.reloadDur = this.reloadDur;
-    if (d.mode === 'pump') { if (!continuing) this.audio.play(d.sounds.reload, { vol: 0.7, rate: 1.1, rateVar: 0.05 }); else this.audio.play(d.sounds.reload, { vol: 0.6, rate: 1.15, rateVar: 0.05 }); }
-    else this.audio.play(d.sounds.reload, { vol: 0.9, rate: d.reloadTime > 2.2 ? 0.9 : 1.0, rateVar: 0.03 });
+    const rl = d.audio && this.audio.has(d.audio.reload[0]) ? this.audio.pick(d.audio.reload) : d.sounds.reload;
+    if (d.mode === 'pump') { this.audio.play(rl, { vol: continuing ? 0.6 : 0.7, rate: continuing ? 1.15 : 1.1, rateVar: 0.05 }); }
+    else this.audio.play(rl, { vol: 0.9, rate: d.reloadTime > 2.2 ? 0.92 : 1.0, rateVar: 0.03, bus: 'gun' });
     this.emit({ type: 'reload' });
   }
 
@@ -375,13 +378,18 @@ export class Gunplay {
     this.vm.fire(d.viewKick);
     const ej = this.vm.ejectWorld(this._e).clone();
     if (d.mode !== 'bolt') this.effects.shell(ej, p.right, new THREE.Vector3(0, 1, 0), p.forward.clone().negate(), d.shell);
-    if (d.cls === 'sniper') this.audio.sniperShot(d.sounds.shot, 'shot_bolt3_near', 'shot_bolt3_far');
+    if (d.audio && this.audio.has(d.audio.shot[0])) this.audio.playGunshot(d.audio);
+    else if (d.cls === 'sniper') this.audio.sniperShot(d.sounds.shot, 'shot_bolt3_near', 'shot_bolt3_far');
     else this.audio.play(d.sounds.shot, { vol: d.sounds.shotVol ?? 0.9, rateVar: 0.035, reverb: d.cls === 'pistol' ? 0.2 : 0.3 });
     this.emit({ type: 'shot', pos: origin, def: d }); this.emit({ type: 'ammo' });
     if (d.mode === 'bolt' || d.mode === 'pump') {
       this.bolting = true; this.boltT = 0; this.vm.boltT = 0; this.vm.boltDur = d.boltTime;
       const delay = d.mode === 'bolt' ? 0.32 : 0.28;
-      setTimeout(() => { if (d.mode === 'bolt') { this.audio.boltCycle(); if (d.mode === 'bolt') this.effects.shell(this.vm.ejectWorld(this._e).clone(), p.right, new THREE.Vector3(0, 1, 0), p.forward.clone().negate(), d.shell); } else this.audio.play('shotgun_pump', { vol: 0.8, rateVar: 0.05 }); }, delay * 1000);
+      setTimeout(() => {
+        const cyc = d.audio?.cycle && this.audio.has(d.audio.cycle[0]) ? this.audio.pick(d.audio.cycle) : null;
+        if (d.mode === 'bolt') { if (cyc) this.audio.play(cyc, { vol: 0.75, rateVar: 0.04, bus: 'gun' }); else this.audio.boltCycle(); this.effects.shell(this.vm.ejectWorld(this._e).clone(), p.right, new THREE.Vector3(0, 1, 0), p.forward.clone().negate(), d.shell); }
+        else this.audio.play(cyc ?? 'shotgun_pump', { vol: 0.8, rateVar: 0.05, bus: 'gun' });
+      }, delay * 1000);
     }
     if (slot.mag === 0 && slot.reserve > 0 && d.mode !== 'pump') setTimeout(() => { if (this.slot === slot && slot.mag === 0 && !this.reloading && this.player.alive) this.startReload(); }, 350);
   }

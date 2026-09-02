@@ -19,7 +19,18 @@ This is a fan-made, non-commercial tribute to the Call of Duty: Modern Warfare 2
 - Additional PBR textures from ambientCG — https://ambientcg.com (CC0)
 
 ## Audio
-- "The Free Firearm Sound Library" (CC0) — https://opengameart.org/content/the-free-firearm-sound-library
+- Freesound (all CC0 / Creative Commons 0), used as the primary weapon and effect samples:
+  - morganpurkis — Single Gunshot 4.2 / 4.3, Battle Rifle, Single Gunshot 5.2 / 5.3 / 5.4, Single Pistol Gunshot 3 / 3.2 / 3.3, Single Gunshot 6 / 6 HP / 6.2 HP, Doom Shotgun 2017, Ricochet 2 (freesound.org/people/morganpurkis)
+  - serøutōnin–deprivəd — "An AK-47 being shot" ×3, 9mm pistol reload, Uzi reload
+  - qubodup — FPS Sniper Shot, FPS Sniper Shot Alt, Sniper Shot in Field 3 (M2010 ESR), Putting .300 Win Mag Box Magazine into Sniper Rifle, R870 Pump 4, G17 Handling 06, Assault Rifle Reload, Real Bullet Flyby Sound, Explosion and Shockwave 2 (freesound.org/people/qubodup)
+  - LilMati — Centerfire Rifle Gun Shot 02 · pgi — Shotgun 001 Single shot · CraftyIndividual — shotgun with clink
+  - Metrolynn — 22 bolt action rifle cycle · Krovi — Shotgun Rack Sample · dasBUTCHER84 — SXP_SHOTGUN_RACK_01
+  - MaximBomba — PistolReloadSound, Rifle-or-shotgun-reload · Kodack — Assault Rifle Reload
+  - harrisonlace — fx_ricochet · C-V — 22 caliber with ricochet · modusmogulus — Fly-by whiz SFX · Daleonfire — Whizzby
+  - GrayJoy — Brass bullet shell casing drop onto concrete · Kinoton — Explosion, Medium Blast · SuperPhat — huge explosion in distance
+  - Nox_Sound — Whoosh_Passby_Jet_Long_Stereo · DarkShroom — desert_wind · nioczkus — Pistol Draw Unholster
+  - coolguy244e — Bullet Hit Metal · wilhellboy — HeavyBulletPing · BorekPL — bullet hits the car
+- "The Free Firearm Sound Library" (CC0, distant-shot layers) — https://opengameart.org/content/the-free-firearm-sound-library
 - "Gun Reload Sounds" (CC0) — https://opengameart.org/content/gun-reload-sounds
 - "Fantozzi's Footsteps (Grass/Sand & Stone)" (CC0) — https://opengameart.org/content/fantozzis-footsteps-grasssand-stone
 - All other sounds (hit markers, UI, impacts, explosions, wind) are synthesized at runtime with Web Audio.

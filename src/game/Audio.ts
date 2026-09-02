@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { clamp, rand } from './util';
 
-export interface PlayOpts { vol?: number; rate?: number; rateVar?: number; delay?: number; loop?: boolean; lowpass?: number; reverb?: number; }
+export interface PlayOpts { vol?: number; rate?: number; rateVar?: number; delay?: number; loop?: boolean; lowpass?: number; highpass?: number; reverb?: number; pan?: number; bus?: 'sfx' | 'gun' | 'ui'; offset?: number; }
+export interface GunSound { shot: string | string[]; vol?: number; rate?: number; rateVar?: number; offset?: number; reverb?: number; layer?: string | string[]; layerVol?: number; layerRate?: number; mech?: string | string[]; mechVol?: number; mechDelay?: number; sub?: number; subFreq?: number; subDecay?: number; crack?: number; echo?: string | string[]; echoVol?: number; echoDelay?: number; echo2?: boolean; }
 export interface Play3DOpts extends PlayOpts { ref?: number; max?: number; rolloff?: number; reverb?: number; }
 
 /** Web Audio manager: sample playback, 3D positional sounds, synthesized UI/impact sounds, ambience. */
@@ -14,6 +15,9 @@ export class AudioManager {
   reverb: ConvolverNode;
   reverbGain: GainNode;
   buffers = new Map<string, AudioBuffer>();
+  /** Dedicated bus for the player's own weapon: fast compressor + makeup for punch, then into the main chain. */
+  gun: GainNode; gunComp: DynamicsCompressorNode;
+  private lastPick = new Map<string, number>();
   private listenerPos = new THREE.Vector3();
   private _fwd = new THREE.Vector3();
   private _up = new THREE.Vector3();
@@ -31,6 +35,9 @@ export class AudioManager {
     this.ui = this.ctx.createGain();
     this.sfx.connect(this.comp); this.ui.connect(this.comp); this.comp.connect(this.master); this.master.connect(this.ctx.destination);
     this.master.gain.value = 0.8;
+    this.gunComp = this.ctx.createDynamicsCompressor();
+    this.gunComp.threshold.value = -20; this.gunComp.knee.value = 4; this.gunComp.ratio.value = 10; this.gunComp.attack.value = 0.0015; this.gunComp.release.value = 0.14;
+    this.gun = this.ctx.createGain(); this.gun.gain.value = 1.35; this.gunComp.connect(this.gun); this.gun.connect(this.comp);
     // Outdoor slap-back reverb (short, bright-ish decay)
     this.reverb = this.ctx.createConvolver();
     this.reverb.buffer = this.makeImpulse(1.4, 3.2);
@@ -72,21 +79,50 @@ export class AudioManager {
     const g = this.ctx.createGain(); g.gain.value = o.vol ?? 1;
     let node: AudioNode = src;
     if (o.lowpass) { const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = o.lowpass; node.connect(lp); node = lp; }
-    node.connect(g); g.connect(this.sfx);
-    if ((o as any).reverb) { const rs = this.ctx.createGain(); rs.gain.value = (o as any).reverb; g.connect(rs); rs.connect(this.reverb); }
-    src.start(this.ctx.currentTime + (o.delay ?? 0));
+    if (o.highpass) { const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = o.highpass; node.connect(hp); node = hp; }
+    if (o.pan !== undefined) { const pn = this.ctx.createStereoPanner(); pn.pan.value = clamp(o.pan, -1, 1); node.connect(pn); node = pn; }
+    node.connect(g); g.connect(o.bus === 'gun' ? this.gunComp : o.bus === 'ui' ? this.ui : this.sfx);
+    if (o.reverb) { const rs = this.ctx.createGain(); rs.gain.value = o.reverb; g.connect(rs); rs.connect(this.reverb); }
+    src.start(this.ctx.currentTime + (o.delay ?? 0), o.offset ?? 0);
     return src;
   }
 
+  /** Pick a sample from a rotation set (never the same one twice in a row). */
+  pick(names: string | string[]): string {
+    if (typeof names === 'string') return names;
+    const avail = names.filter((n) => this.buffers.has(n)); if (!avail.length) return names[0];
+    if (avail.length === 1) return avail[0];
+    const key = avail.join('|'); const last = this.lastPick.get(key) ?? -1;
+    let i = Math.floor(Math.random() * avail.length); if (i === last) i = (i + 1) % avail.length;
+    this.lastPick.set(key, i); return avail[i];
+  }
+  has(name: string) { return this.buffers.has(name); }
+
+  /**
+   * Layered first-person gunshot: main recording (rotated), mechanical action click, synthesized sub-thump and
+   * crack transient, plus a distant echo tail — all through the compressed gun bus.
+   */
+  playGunshot(g: GunSound) {
+    const t = this.ctx.currentTime;
+    const main = this.pick(g.shot);
+    this.play(main, { vol: g.vol ?? 1, rate: (g.rate ?? 1), rateVar: g.rateVar ?? 0.04, bus: 'gun', reverb: g.reverb ?? 0.35, offset: g.offset ?? 0 });
+    if (g.layer) this.play(this.pick(g.layer), { vol: g.layerVol ?? 0.5, rate: g.layerRate ?? 1, rateVar: 0.03, bus: 'gun', delay: 0.004 });
+    if (g.mech) this.play(this.pick(g.mech), { vol: g.mechVol ?? 0.45, rateVar: 0.05, bus: 'gun', delay: g.mechDelay ?? 0.0, highpass: 600 });
+    if (g.sub) { this.tone(g.subFreq ?? 58, 'sine', 0.003, g.sub, g.subDecay ?? 0.22, this.gunComp, t, 32); }
+    if (g.crack) { this.noise(0.001, g.crack, 0.022, { type: 'highpass', freq: 2400 }, this.gunComp, t); }
+    if (g.echo) { const far = this.pick(g.echo); this.play(far, { vol: (g.echoVol ?? 0.35), rate: 0.9, rateVar: 0.04, delay: g.echoDelay ?? 0.26, lowpass: 1800, reverb: 0.7 }); if (g.echo2) this.play(far, { vol: (g.echoVol ?? 0.35) * 0.55, rate: 0.8, delay: (g.echoDelay ?? 0.26) + 0.42, lowpass: 1000, reverb: 0.8 }); }
+  }
+
   /** Positional playback with HRTF panning and distance attenuation. */
-  play3D(name: string, pos: THREE.Vector3, o: Play3DOpts = {}): AudioBufferSourceNode | null {
-    const buf = this.buffers.get(name); if (!buf) return null;
+  play3D(nameOrSet: string | string[], pos: THREE.Vector3, o: Play3DOpts = {}): AudioBufferSourceNode | null {
+    const name = this.pick(nameOrSet); const buf = this.buffers.get(name); if (!buf) return null;
     const src = this.ctx.createBufferSource(); src.buffer = buf; src.loop = !!o.loop;
     src.playbackRate.value = (o.rate ?? 1) * (o.rateVar ? 1 + rand(-o.rateVar, o.rateVar) : 1);
     const p = this.makePanner(pos, o);
     const g = this.ctx.createGain(); g.gain.value = o.vol ?? 1;
     let node: AudioNode = src;
     if (o.lowpass) { const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = o.lowpass; node.connect(lp); node = lp; }
+    if (o.highpass) { const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = o.highpass; node.connect(hp); node = hp; }
     node.connect(g); g.connect(p); p.connect(this.sfx);
     if (o.reverb !== 0) { const rs = this.ctx.createGain(); rs.gain.value = (o.reverb ?? 0.5); g.connect(rs); rs.connect(this.reverb); }
     src.start(this.ctx.currentTime + (o.delay ?? 0));
@@ -175,12 +211,20 @@ export class AudioManager {
     this.noise(0.002, vol * 0.5, 0.04, { type: 'bandpass', freq: 2400 + rand(-400, 400), q: 1.5 }, this.sfx, t);
   }
   whizz(pan = 0) {
+    if (this.has('whizz_1')) { this.play(this.pick(['whizz_1', 'whizz_2', 'whizz_3']), { vol: 0.7, rateVar: 0.08, pan }); return; }
     const t = this.ctx.currentTime; const p = this.ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); p.connect(this.sfx);
     this.noise(0.01, 0.35, 0.16, { type: 'bandpass', freq: 3800, q: 3, slideTo: 900 }, p, t);
   }
   ricochet(pos: THREE.Vector3) {
+    if (this.has('ricochet_1')) { this.play3D(['ricochet_1', 'ricochet_2', 'ricochet_3'], pos, { vol: 0.55, rateVar: 0.08, ref: 3, rolloff: 1.3 }); return; }
     const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3, rolloff: 1.3 }); p.connect(this.sfx);
     this.tone(2800 + rand(-600, 600), 'sine', 0.003, 0.35, 0.25, p, t, 900); this.noise(0.002, 0.3, 0.05, { type: 'highpass', freq: 3000 }, p, t);
+  }
+  /** Bullet impact by surface; uses recorded samples when present, else the synthesized fallback. */
+  impactSurface(pos: THREE.Vector3, surface: string) {
+    const set = surface === 'metal' ? ['imp_metal_1', 'imp_metal_2', 'imp_metal_3'] : surface === 'sand' || surface === 'rock' ? ['imp_dirt_1', 'imp_dirt_2', 'imp_dirt_3'] : surface === 'wood' ? ['imp_wood_1', 'imp_wood_2'] : ['imp_concrete_1', 'imp_concrete_2', 'imp_concrete_3'];
+    if (this.has(set[0])) { this.play3D(set, pos, { vol: surface === 'metal' ? 0.7 : 0.6, rateVar: 0.1, ref: 3, rolloff: 1.3, max: 60 }); return; }
+    this.impact(pos, surface === 'metal');
   }
   impact(pos: THREE.Vector3, metal: boolean) {
     const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3, rolloff: 1.3 }); p.connect(this.sfx);
@@ -189,6 +233,13 @@ export class AudioManager {
   }
   bodyHit(pos: THREE.Vector3) { const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3 }); p.connect(this.sfx); this.noise(0.003, 0.6, 0.08, { type: 'lowpass', freq: 500 }, p, t); this.tone(120, 'sine', 0.003, 0.4, 0.08, p, t); }
   explosion(pos: THREE.Vector3, dist: number) {
+    if (this.has('explosion_1')) {
+      this.play3D(['explosion_1', 'explosion_2'], pos, { vol: 1.0, rateVar: 0.05, ref: 8, rolloff: 0.8, max: 400, reverb: 0.8 });
+      if (this.has('explosion_far_1')) this.play3D('explosion_far_1', pos, { vol: 0.6, delay: 0.25, ref: 20, rolloff: 0.5, max: 600, lowpass: 900, reverb: 0.9 });
+      const t0 = this.ctx.currentTime; this.tone(48, 'sine', 0.005, dist < 25 ? 0.9 * (1 - dist / 30) : 0.05, 0.6, this.sfx, t0, 26);
+      if (dist < 9) this.tinnitus(1 - dist / 9);
+      return;
+    }
     const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 6, rolloff: 0.9, max: 400 }); p.connect(this.sfx);
     const rs = this.ctx.createGain(); rs.gain.value = 0.8; p.connect(rs); rs.connect(this.reverb);
     this.noise(0.005, 1.2, 0.9, { type: 'lowpass', freq: 3000, q: 0.6, slideTo: 120 }, p, t);
@@ -196,6 +247,7 @@ export class AudioManager {
     this.noise(0.002, 0.7, 0.25, { type: 'highpass', freq: 1500 }, p, t);
     if (dist < 9) this.tinnitus(1 - dist / 9);
   }
+  casing(pos: THREE.Vector3) { if (this.has('casing_1')) this.play3D(['casing_1', 'casing_2', 'casing_3'], pos, { vol: 0.35, rateVar: 0.1, ref: 2, rolloff: 1.5, max: 25, reverb: 0 }); else this.grenadeBounce(pos, 0.25); }
   grenadeBounce(pos: THREE.Vector3, strength: number) { const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3 }); p.connect(this.sfx); this.tone(900 + rand(-200, 200), 'triangle', 0.002, 0.25 * strength, 0.09, p, t); this.noise(0.002, 0.2 * strength, 0.04, { type: 'bandpass', freq: 2000, q: 2 }, p, t); }
   grenadePin() { const t = this.ctx.currentTime; this.tone(2400, 'square', 0.002, 0.08, 0.03, this.sfx, t); this.noise(0.002, 0.2, 0.05, { type: 'bandpass', freq: 3000, q: 2 }, this.sfx, t + 0.04); }
   tinnitus(strength: number) {
@@ -208,6 +260,7 @@ export class AudioManager {
   countdownBeep(final = false) { const t = this.ctx.currentTime; this.tone(final ? 1320 : 880, 'square', 0.004, final ? 0.12 : 0.08, final ? 0.35 : 0.12, this.ui, t); }
   /** Jet pass for the airstrike: swept band-passed noise with a doppler-like pitch drop and a low rumble. */
   jetFlyby() {
+    if (this.has('jet_1')) { this.play('jet_1', { vol: 0.9, rateVar: 0.03 }); return; }
     const t = this.ctx.currentTime; const s = this.ctx.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
     const bp = this.ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2; bp.frequency.setValueAtTime(300, t); bp.frequency.exponentialRampToValueAtTime(2600, t + 1.6); bp.frequency.exponentialRampToValueAtTime(260, t + 3.4);
     const g = this.ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.7, t + 1.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 3.6);
@@ -232,6 +285,13 @@ export class AudioManager {
   /** Soft desert wind bed: brown noise, low-passed, slow gusts. */
   startWind() {
     if (this.windNodes.length) return;
+    if (this.has('wind_loop')) {
+      const s = this.ctx.createBufferSource(); s.buffer = this.buffers.get('wind_loop')!; s.loop = true;
+      const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200; const g = this.ctx.createGain(); g.gain.value = 0.05;
+      const lfo = this.ctx.createOscillator(); lfo.frequency.value = 0.04; const lg = this.ctx.createGain(); lg.gain.value = 0.015; lfo.connect(lg); lg.connect(g.gain);
+      s.connect(lp); lp.connect(g); g.connect(this.sfx); s.start(0, Math.random() * 20); lfo.start();
+      this.windNodes = [s, lp, this.ctx.createGain(), g, lfo, this.ctx.createOscillator()]; return;
+    }
     const len = this.ctx.sampleRate * 8; const buf = this.ctx.createBuffer(2, len, this.ctx.sampleRate);
     for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); let last = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; } }
     const s = this.ctx.createBufferSource(); s.buffer = buf; s.loop = true;

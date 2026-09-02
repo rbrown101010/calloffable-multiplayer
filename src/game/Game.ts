@@ -96,7 +96,9 @@ export class Game {
     this.player.onFootstep = (running) => this.footstep(running);
     this.player.onLand = (impact) => { if (impact > 0.15) { this.footstep(true, impact); this.hud.damage(0, null); } };
     setLoad(0.7, 'LOADING AUDIO');
-    await this.audio.load(SOUNDS, (d, t) => setLoad(0.7 + 0.2 * d / t, `LOADING AUDIO ${d}/${t}`));
+    let manifest: Record<string, string> = { ...SOUNDS };
+    try { const extra: string[] = await (await fetch('/sounds/manifest.json')).json(); for (const n of extra) manifest[n] = `/sounds/${n}.mp3`; } catch {}
+    await this.audio.load(manifest, (d, t) => setLoad(0.7 + 0.2 * d / t, `LOADING AUDIO ${d}/${t}`));
     setLoad(0.92, 'COMPOSITING');
     this.post = setupPost(this.renderer, this.scene, this.camera, this.weaponCam, { ao: !this.params.has('noao') });
     this.renderMinimapBase();

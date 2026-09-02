@@ -310,7 +310,10 @@ export class BotManager {
     for (let i = 0; i < d.pellets; i++) this.bullets.fire(d, eye, d.pellets > 1 ? coneDir(dir, d.pelletSpread) : dir, b, { tracerStart: muzzle, tracer: d.tracer && (d.pellets === 1 || i % 3 === 0), dmgMul: b.dmgMul });
     this.effects.muzzleFlashWorld(muzzle, dir, d.flashScale);
     const far = eye.distanceTo(this.player.eyePos) > 22;
-    this.audio.play3D(far ? d.sounds.far : d.sounds.shot, muzzle, { vol: far ? 0.9 : 0.75, rateVar: 0.04, ref: 6, rolloff: 0.9 });
+    const nearSet = d.audio && this.audio.has(d.audio.shot[0]) ? d.audio.shot : d.sounds.shot;
+    const farSet = d.audio ? d.audio.far : d.sounds.far;
+    this.audio.play3D(far ? farSet : nearSet, muzzle, { vol: far ? 0.9 : 0.8, rateVar: 0.04, ref: 6, rolloff: 0.9, reverb: 0.4 });
+    if (!far) this.audio.play3D(farSet, muzzle, { vol: 0.35, rate: 0.92, delay: 0.18, ref: 8, rolloff: 0.7, lowpass: 1600, reverb: 0.6 });
     if (d.cls === 'sniper') this.audio.play3D('shot_bolt3_far', muzzle, { vol: 0.8, rate: 0.88, ref: 10, rolloff: 0.6, max: 400, reverb: 0.7 });
     b.mag--; this.events.onShot(b, eye);
     // fire cadence: bursts for autos, single for semi/bolt/pump

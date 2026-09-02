@@ -183,7 +183,7 @@ export class Effects {
 
   update(dt: number, camPos: THREE.Vector3, time: number) {
     this.add.update(dt); this.norm.update(dt);
-    this.shells.update(dt, 9, (p) => { this.audio.grenadeBounce(p, 0.25); });
+    this.shells.update(dt, 9, (p) => { this.audio.casing(p); });
     this.chunks.update(dt, 12);
     for (let i = this.lights.length - 1; i >= 0; i--) { const L = this.lights[i]; L.t += dt; const k = 1 - L.t / L.life; if (k <= 0) { this.scene.remove(L.l); this.lights.splice(i, 1); } else L.l.intensity = L.i0 * k * k; }
     for (let i = this.flashes.length - 1; i >= 0; i--) { const F = this.flashes[i]; F.t -= dt; if (F.t <= 0) { this.scene.remove(F.s); this.flashes.splice(i, 1); } }
@@ -217,22 +217,22 @@ export class Effects {
       for (let i = 0; i < 3; i++) this.norm.emit({ x: point.x, y: point.y, z: point.z, vx: n.x * rand(0.5, 1.5) + rand(-0.3, 0.3), vy: n.y * rand(0.5, 1.5) + rand(0.2, 0.6), vz: n.z * rand(0.5, 1.5) + rand(-0.3, 0.3), life: rand(0.4, 0.8), size: 0.08, sizeEnd: 0.35, r: 0.55, g: 0.55, b: 0.55, a: 0.4, drag: 2 });
       this.light(point.clone().addScaledVector(n, 0.05), 0xffc080, 4, 2, 0.06);
       this.holes.add(point, n, rand(0.7, 1.0));
-      this.audio.impact(point, true); if (Math.random() < 0.25) this.audio.ricochet(point);
+      this.audio.impactSurface(point, 'metal'); if (Math.random() < 0.25) this.audio.ricochet(point);
     } else if (surface === 'sand' || surface === 'rock') {
       const c = surface === 'sand' ? [0.78, 0.68, 0.5] : [0.6, 0.52, 0.42];
       for (let i = 0; i < 10; i++) this.norm.emit({ x: point.x, y: point.y, z: point.z, vx: n.x * rand(0.6, 2.2) + rand(-0.9, 0.9), vy: n.y * rand(1.2, 3.0) + rand(0, 1), vz: n.z * rand(0.6, 2.2) + rand(-0.9, 0.9), life: rand(0.6, 1.3), size: rand(0.12, 0.25), sizeEnd: rand(0.5, 0.9), r: c[0], g: c[1], b: c[2], a: 0.55, grav: 1.5, drag: 1.6 });
       for (let i = 0; i < 6; i++) this.norm.emit({ x: point.x, y: point.y, z: point.z, vx: n.x * rand(1, 4) + rand(-2, 2), vy: n.y * rand(2, 5) + rand(0, 2), vz: n.z * rand(1, 4) + rand(-2, 2), life: rand(0.4, 0.9), size: 0.03, sizeEnd: 0.02, r: c[0] * 0.8, g: c[1] * 0.8, b: c[2] * 0.8, a: 0.9, grav: 9.8 });
       if (surface === 'sand') this.sandHoles.add(point, n, rand(0.8, 1.2)); else this.holes.add(point, n, rand(0.8, 1.1));
-      this.audio.impact(point, false);
+      this.audio.impactSurface(point, surface); if (surface === 'rock' && Math.random() < 0.2) this.audio.ricochet(point);
     } else if (surface === 'wood') {
       for (let i = 0; i < 8; i++) this.norm.emit({ x: point.x, y: point.y, z: point.z, vx: n.x * rand(1, 3) + rand(-1.5, 1.5), vy: n.y * rand(1, 3) + rand(0.5, 2), vz: n.z * rand(1, 3) + rand(-1.5, 1.5), life: rand(0.4, 0.9), size: 0.035, sizeEnd: 0.02, r: 0.55, g: 0.42, b: 0.28, a: 1, grav: 9.8 });
       for (let i = 0; i < 3; i++) this.norm.emit({ x: point.x, y: point.y, z: point.z, vx: n.x * rand(0.4, 1.2), vy: n.y * rand(0.4, 1.2) + 0.3, vz: n.z * rand(0.4, 1.2), life: 0.6, size: 0.08, sizeEnd: 0.3, r: 0.6, g: 0.5, b: 0.4, a: 0.4, drag: 2 });
-      this.holes.add(point, n, rand(0.8, 1.1)); this.audio.impact(point, false);
+      this.holes.add(point, n, rand(0.8, 1.1)); this.audio.impactSurface(point, 'wood');
     } else if (surface === 'none') { return; }
     else { // concrete & default
       for (let i = 0; i < 9; i++) this.norm.emit({ x: point.x, y: point.y, z: point.z, vx: n.x * rand(1, 3) + rand(-1.5, 1.5), vy: n.y * rand(1, 3) + rand(0.5, 2), vz: n.z * rand(1, 3) + rand(-1.5, 1.5), life: rand(0.4, 0.9), size: 0.03, sizeEnd: 0.02, r: 0.6, g: 0.58, b: 0.55, a: 1, grav: 9.8 });
       for (let i = 0; i < 5; i++) this.norm.emit({ x: point.x, y: point.y, z: point.z, vx: n.x * rand(0.5, 1.5) + rand(-0.5, 0.5), vy: n.y * rand(0.5, 1.5) + rand(0.3, 0.8), vz: n.z * rand(0.5, 1.5) + rand(-0.5, 0.5), life: rand(0.5, 1.0), size: 0.1, sizeEnd: 0.45, r: 0.62, g: 0.6, b: 0.56, a: 0.45, drag: 2 });
-      this.holes.add(point, n, rand(0.8, 1.2)); this.audio.impact(point, false);
+      this.holes.add(point, n, rand(0.8, 1.2)); this.audio.impactSurface(point, 'concrete'); if (Math.random() < 0.15) this.audio.ricochet(point);
     }
   }
 

@@ -17,8 +17,15 @@ export interface ModelDef {
   worldRot?: [number, number, number];
 }
 
+export interface GunAudio {
+  shot: string[]; far: string[]; reload: string[]; reloadEmpty?: string[]; cycle?: string[];
+  vol?: number; rate?: number; rateVar?: number; layer?: string[]; layerVol?: number; layerRate?: number;
+  mech?: string[]; mechVol?: number; sub?: number; subFreq?: number; subDecay?: number; crack?: number;
+  echo?: string[]; echoVol?: number; echoDelay?: number; echo2?: boolean; reverb?: number;
+}
 export interface WeaponDef {
   id: string; name: string; cls: WeaponClass; mode: FireMode;
+  audio?: GunAudio;
   damage: number; headMul: number; legMul: number; falloffStart: number; falloffEnd: number; falloffMin: number;
   rpm: number; pellets: number; pelletSpread: number;
   mag: number; reserve: number; reloadTime: number; reloadEmptyTime: number; magOutT: number;
@@ -47,6 +54,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     recoilPitch: 0.95 * D, recoilYaw: 0.28 * D, recoilRand: 0.5, viewKick: 1.0,
     speedMul: 0.95, bulletSpeed: 720, range: 300, boltTime: 0, drawTime: 0.45,
     sounds: { shot: 'shot_ar_near', far: 'shot_ar_far', reload: 'reload_rifle', shotVol: 0.9 },
+    audio: { shot: ['ar_1', 'ar_2', 'ar_3'], far: ['shot_ar_far'], reload: ['reload_ar_1', 'reload_ar_2'], vol: 0.95, rateVar: 0.035, sub: 0.35, subFreq: 62, subDecay: 0.14, crack: 0.25, echo: ['shot_ar_far'], echoVol: 0.22, echoDelay: 0.22, reverb: 0.3 },
     model: { url: '/models/weapons/scarh.glb', scale: 0.079, rot: [0, Math.PI, 0], hip: [0.2, -0.2, -0.5], ads: [0, -0.148, -0.42], sprint: [0.16, -0.26, -0.45], sprintRot: [0.35, -0.5, 0.1], muzzle: [0, 0.02, 0], eject: [0.04, 0.02, 0.05], worldScale: 1 },
     tracer: true, flashScale: 1.0, shell: 'rifle',
   },
@@ -61,6 +69,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     recoilPitch: 3.6 * D, recoilYaw: 0.9 * D, recoilRand: 0.5, viewKick: 2.4,
     speedMul: 0.86, bulletSpeed: 950, range: 500, boltTime: 1.05, drawTime: 0.75,
     sounds: { shot: 'shot_bolt_near', far: 'shot_bolt_far', reload: 'reload_rifle', extra: 'shot_bolt2_near', shotVol: 1.0 },
+    audio: { shot: ['sniper_1', 'sniper_2', 'sniper_3'], far: ['shot_bolt3_far', 'shot_bolt_far'], reload: ['reload_sniper_1', 'reload_ar_2'], cycle: ['mech_bolt'], vol: 1.0, rate: 0.96, rateVar: 0.02, layer: ['sniper_field'], layerVol: 0.7, layerRate: 1.0, sub: 0.9, subFreq: 50, subDecay: 0.32, crack: 0.9, echo: ['shot_bolt3_far', 'shot_bolt_far'], echoVol: 0.45, echoDelay: 0.3, echo2: true, reverb: 0.5 },
     model: { url: 'proc:intervention', scale: 1, rot: [0, 0, 0], hip: [0.24, -0.27, -0.72], ads: [0, -0.105, -0.36], sprint: [0.2, -0.32, -0.6], sprintRot: [0.4, -0.55, 0.1], muzzle: [0, 0.008, 0], eject: [0.04, 0.02, 0.1], worldScale: 1 },
     tracer: true, flashScale: 1.6, shell: 'sniper',
   },
@@ -75,6 +84,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     recoilPitch: 0.62 * D, recoilYaw: 0.32 * D, recoilRand: 0.6, viewKick: 0.7,
     speedMul: 1.03, bulletSpeed: 480, range: 220, boltTime: 0, drawTime: 0.35,
     sounds: { shot: 'shot_smg_near', far: 'shot_smg_far', reload: 'reload_rifle', shotVol: 0.75 },
+    audio: { shot: ['smg_1', 'smg_2', 'smg_3'], far: ['shot_smg_far'], reload: ['reload_smg_1', 'reload_pistol_1'], vol: 0.85, rateVar: 0.04, sub: 0.22, subFreq: 70, subDecay: 0.1, crack: 0.18, echo: ['shot_smg_far'], echoVol: 0.16, echoDelay: 0.2, reverb: 0.25 },
     model: { url: '/models/weapons/mp5.glb', scale: 85, rot: [0, Math.PI, 0], hip: [0.2, -0.19, -0.42], ads: [-0.02, -0.125, -0.45], sprint: [0.16, -0.24, -0.38], sprintRot: [0.3, -0.5, 0.1], muzzle: [0, 0.02, 0], eject: [0.035, 0.02, 0.02], worldScale: 1 },
     tracer: true, flashScale: 0.75, shell: 'pistol',
   },
@@ -89,6 +99,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     recoilPitch: 1.25 * D, recoilYaw: 0.45 * D, recoilRand: 0.55, viewKick: 1.2,
     speedMul: 0.94, bulletSpeed: 715, range: 300, boltTime: 0, drawTime: 0.5,
     sounds: { shot: 'shot_ak_near', far: 'shot_ak_far', reload: 'reload_rifle', shotVol: 0.95 },
+    audio: { shot: ['ak_1', 'ak_2', 'ak_3'], far: ['shot_ak_far'], reload: ['reload_ar_2', 'reload_ar_1'], vol: 0.95, rateVar: 0.035, sub: 0.45, subFreq: 58, subDecay: 0.16, crack: 0.3, echo: ['shot_ak_far'], echoVol: 0.25, echoDelay: 0.22, reverb: 0.32 },
     model: { url: '/models/weapons/ak47.glb', scale: 0.95, rot: [0, Math.PI, 0], hip: [0.2, -0.2, -0.5], ads: [0, -0.1, -0.4], sprint: [0.16, -0.26, -0.45], sprintRot: [0.35, -0.5, 0.1], muzzle: [0, 0.03, 0], eject: [0.04, 0.03, 0.05], worldScale: 1 },
     tracer: true, flashScale: 1.0, shell: 'rifle',
   },
@@ -103,6 +114,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     recoilPitch: 2.6 * D, recoilYaw: 0.6 * D, recoilRand: 0.6, viewKick: 2.2,
     speedMul: 0.93, bulletSpeed: 400, range: 60, boltTime: 0.7, drawTime: 0.5,
     sounds: { shot: 'shot_shotgun_near', far: 'shot_shotgun_far', reload: 'shotgun_pump', extra: 'shotgun_pump', shotVol: 1.0 },
+    audio: { shot: ['shotgun_1', 'shotgun_2', 'shotgun_3'], far: ['shot_shotgun_far'], reload: ['reload_shotgun_1', 'shotgun_pump'], cycle: ['mech_pump_1', 'mech_pump_2'], vol: 1.0, rateVar: 0.03, sub: 0.8, subFreq: 52, subDecay: 0.26, crack: 0.5, echo: ['shot_shotgun_far'], echoVol: 0.35, echoDelay: 0.24, echo2: true, reverb: 0.4 },
     model: { url: '/models/weapons/spas12.glb', scale: 1.0, rot: [0, Math.PI / 2, 0], hip: [0.2, -0.2, -0.5], ads: [0, -0.095, -0.4], sprint: [0.16, -0.26, -0.45], sprintRot: [0.35, -0.5, 0.1], muzzle: [0, 0.02, 0], eject: [0.04, 0.02, 0.0], worldScale: 1 },
     tracer: false, flashScale: 1.3, shell: 'shotgun',
   },
@@ -117,6 +129,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     recoilPitch: 2.4 * D, recoilYaw: 0.7 * D, recoilRand: 0.5, viewKick: 2.0,
     speedMul: 1.0, bulletSpeed: 470, range: 120, boltTime: 0, drawTime: 0.3,
     sounds: { shot: 'shot_pistol_near', far: 'shot_pistol_far', reload: 'reload_pistol', shotVol: 0.9 },
+    audio: { shot: ['deagle_1', 'deagle_2', 'deagle_3'], far: ['shot_pistol_far'], reload: ['reload_pistol_1', 'reload_pistol_2'], vol: 1.0, rateVar: 0.03, sub: 0.7, subFreq: 56, subDecay: 0.22, crack: 0.45, echo: ['shot_pistol_far'], echoVol: 0.3, echoDelay: 0.24, echo2: true, reverb: 0.35 },
     model: { url: '/models/weapons/deagle.glb', scale: 0.0098, rot: [0, Math.PI, 0], hip: [0.17, -0.17, -0.36], ads: [0, -0.078, -0.3], sprint: [0.16, -0.24, -0.34], sprintRot: [0.3, -0.45, 0.1], muzzle: [0, 0.03, 0], eject: [0.03, 0.03, 0.0], worldScale: 1 },
     tracer: true, flashScale: 0.9, shell: 'pistol',
   },
@@ -131,6 +144,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     recoilPitch: 1.3 * D, recoilYaw: 0.4 * D, recoilRand: 0.5, viewKick: 1.2,
     speedMul: 1.0, bulletSpeed: 420, range: 100, boltTime: 0, drawTime: 0.28,
     sounds: { shot: 'shot_pistol2_near', far: 'shot_pistol_far', reload: 'reload_pistol', shotVol: 0.8 },
+    audio: { shot: ['pistol_1', 'pistol_2', 'pistol_3'], far: ['shot_pistol_far'], reload: ['reload_pistol_2', 'reload_pistol_1'], vol: 0.9, rateVar: 0.04, sub: 0.35, subFreq: 66, subDecay: 0.13, crack: 0.3, echo: ['shot_pistol_far'], echoVol: 0.2, echoDelay: 0.22, reverb: 0.3 },
     model: { url: '/models/weapons/m1911.glb', scale: 1.1, rot: [0, 0, 0], hip: [0.17, -0.17, -0.36], ads: [0, -0.085, -0.3], sprint: [0.16, -0.24, -0.34], sprintRot: [0.3, -0.45, 0.1], muzzle: [0, 0.03, 0], eject: [0.03, 0.03, 0.0], worldScale: 1 },
     tracer: true, flashScale: 0.7, shell: 'pistol',
   },
