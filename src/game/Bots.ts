@@ -10,7 +10,7 @@ import { AudioManager } from './Audio';
 import { Player } from './Player';
 import { clamp, damp, DEG, lerp, rand, pick, wrapAngle } from './util';
 
-export type BotState = 'patrol' | 'hunt' | 'engage' | 'retreat' | 'dead';
+export type BotState = 'patrol' | 'hunt' | 'engage' | 'retreat' | 'cover' | 'dead';
 export interface Target { entity: any; pos: THREE.Vector3; head: THREE.Vector3; alive: boolean; name: string; }
 
 const CAP_HH = 0.54, CAP_R = 0.36;
@@ -26,6 +26,7 @@ export class Bot {
   fireT = 0; burstLeft = 0; burstPause = 0; reloading = false; reloadT = 0; strafeDir = 0; strafeT = 0; crouch = false;
   retreatT = 0; hurtT = -99; lastDamageFrom: any = null; alertPos: THREE.Vector3 | null = null; alertT = -99;
   kills = 0; deaths = 0; score = 0; streak = 0; strideAcc = 0; grenadeT = 12; dmgMul = 0.85;
+  coverT = 0; coverCd = 0; dangerT = 0; deathDir = new THREE.Vector3(0, 0, 1); flinch = 0; onHurt?: () => void;
   puppet: SoldierPuppet | null = null; muzzle = new THREE.Object3D();
   get model(): THREE.Group | null { return this.puppet ? this.puppet.model : null; }
   climbing = false; climbTarget: THREE.Vector3 | null = null;
@@ -72,7 +73,10 @@ export class Bot {
   onDeath?: (attacker: any, weapon: string, headshot: boolean) => void;
   takeDamage(amount: number, attacker: any, part: string, weapon = '', _from: THREE.Vector3 | null = null): boolean {
     if (!this.alive) return false;
-    this.health -= amount; this.hurtT = performance.now() / 1000; this.lastDamageFrom = attacker;
+    this.health -= amount; this.hurtT = performance.now() / 1000; this.lastDamageFrom = attacker; this.flinch = Math.min(1, this.flinch + amount / 60);
+    const src = _from ?? (attacker && attacker.pos ? attacker.pos : null);
+    if (src) { this.deathDir.set(this.pos.x - src.x, 0, this.pos.z - src.z); if (this.deathDir.lengthSq() < 1e-4) this.deathDir.set(0, 0, 1); this.deathDir.normalize(); }
+    this.onHurt?.();
     if (attacker && attacker !== this) { this.alertPos = attacker.pos ? attacker.pos.clone() : null; this.alertT = this.hurtT; if (!this.target) this.reactionT = Math.min(this.reactionT, 0.15); }
     if (this.health <= 0) { this.health = 0; this.die(); this.onDeath?.(attacker, weapon, part === 'head'); return true; }
     return false;
@@ -88,7 +92,7 @@ export class Bot {
     const P = this.puppet; if (!P) return;
     if (!this.alive) {
       this.deathT += dt;
-      P.update(dt, { pos: this.pos, feetY: this.feetY, yaw: this.yaw, aimYaw: this.aimYaw, aimPitch: this.aimPitch, speed: 0, alive: false, deathT: this.deathT });
+      P.update(dt, { pos: this.pos, feetY: this.feetY, yaw: this.yaw, aimYaw: this.aimYaw, aimPitch: this.aimPitch, speed: 0, alive: false, deathT: this.deathT, deathDir: this.deathDir });
       if (this.deathT > 3.5) P.setVisible(false);
       return;
     }
@@ -97,7 +101,8 @@ export class Bot {
     if (this.target && (this.state === 'engage' || this.state === 'hunt')) faceYaw = this.aimYaw;
     else if (sp > 0.5) faceYaw = Math.atan2(this.vel.x, this.vel.z);
     this.yaw = this.yaw + wrapAngle(faceYaw - this.yaw) * Math.min(1, dt * 9);
-    P.update(dt, { pos: this.pos, feetY: this.feetY, yaw: this.yaw, aimYaw: this.aimYaw, aimPitch: this.aimPitch, speed: sp, alive: true, deathT: 0 });
+    this.flinch = Math.max(0, this.flinch - dt * 3);
+    P.update(dt, { pos: this.pos, feetY: this.feetY, yaw: this.yaw, aimYaw: this.aimYaw, aimPitch: this.aimPitch, speed: sp, alive: true, deathT: 0, flinch: this.flinch, crouch: this.crouch });
   }
 }
 
@@ -105,6 +110,8 @@ export interface BotEvents {
   onKill: (killer: any, victim: any, weapon: string, headshot: boolean) => void;
   onShot: (bot: Bot, pos: THREE.Vector3) => void;
   onStep?: (bot: Bot, running: boolean) => void;
+  onSpot?: (bot: Bot) => void;
+  onHurt?: (bot: Bot) => void;
   onReload?: (bot: Bot) => void;
   onGrenade?: (bot: Bot, pos: THREE.Vector3, vel: THREE.Vector3, fuse: number) => void;
 }
@@ -113,6 +120,8 @@ export class BotManager {
   bots: Bot[] = [];
   /** Match-start countdown / menu: bots do not think or move. */
   frozen = false;
+  /** Live grenade positions (fed by the game) that bots try to get away from. */
+  dangerZones: THREE.Vector3[] = [];
   playerTarget!: Target;
   private _tmp = new THREE.Vector3(); private _dir = new THREE.Vector3();
   constructor(private physics: Physics, private scene: THREE.Scene, private map: RustMap, private bullets: Bullets, private effects: Effects, private audio: AudioManager, private player: Player, private events: BotEvents) {}
@@ -122,6 +131,8 @@ export class BotManager {
       const lo = LOADOUTS[(i + 1 + Math.floor(Math.random() * 2)) % LOADOUTS.length];
       const b = new Bot(this.physics, i + 1, names[i], lo, skills[i]);
       await b.loadVisuals(this.scene);
+      b.onHurt = () => this.events.onHurt?.(b);
+      b.puppet?.setTint([0xd8cdb5, 0xb9b3a4, 0xcbbf9d, 0xa9a08c, 0xd0c4a8, 0xbdb39b, 0xc9c0ae][i % 7]);
       this.bots.push(b);
     }
   }
@@ -178,15 +189,17 @@ export class BotManager {
         const dir = this._dir.subVectors(t.pos, eye).normalize();
         const fwd = new THREE.Vector3(Math.sin(b.aimYaw), 0, Math.cos(b.aimYaw));
         const ang = Math.acos(clamp(fwd.dot(new THREE.Vector3(dir.x, 0, dir.z).normalize()), -1, 1));
-        const inFov = ang < (b.target?.entity === t.entity ? 100 : 65) * DEG || d < 4;
+        const inFov = ang < (b.target?.entity === t.entity ? 110 : 80) * DEG || d < 5;
         if (!inFov) continue;
         const vis = this.physics.clearLine(eye, t.pos) || this.physics.clearLine(eye, t.head);
         if (!vis) continue;
         if (b.target?.entity === t.entity) sawCurrent = true;
-        if (d < bestD) { bestD = d; best = t; }
+        // threat weighting: whoever hurt us recently counts as much closer
+        const score = d * (t.entity === b.lastDamageFrom && time - b.hurtT < 4 ? 0.45 : 1);
+        if (score < bestD) { bestD = score; best = t; }
       }
       if (best) {
-        if (!b.target || (b.target.entity !== best.entity && (!sawCurrent || bestD < 8))) { b.target = best; b.reactionT = lerp(0.55, 0.18, b.skill) + rand(0, 0.2); b.seeT = 0; }
+        if (!b.target || (b.target.entity !== best.entity && (!sawCurrent || bestD < 8))) { const fresh = !b.target; b.target = best; b.reactionT = lerp(0.55, 0.18, b.skill) + rand(0, 0.2); b.seeT = 0; if (fresh) this.events.onSpot?.(b); }
         else { b.target.pos.copy(best.pos); b.target.head.copy(best.head); }
         b.visible = true; b.lastSeen.copy(best.pos); b.lastSeenT = time; b.state = b.state === 'retreat' ? 'retreat' : 'engage';
       } else {
@@ -202,6 +215,25 @@ export class BotManager {
       if (b.health < 32 && b.state === 'engage' && b.retreatT <= 0 && Math.random() < 0.6) { b.state = 'retreat'; b.retreatT = 4.5; b.path = []; b.goal = -1; }
     }
     if (b.retreatT > 0) { b.retreatT -= dt; if (b.retreatT <= 0 && b.state === 'retreat') b.state = b.target ? 'engage' : 'patrol'; }
+    b.coverCd -= dt; b.dangerT -= dt;
+    // grenade avoidance: sprint away from any live grenade nearby
+    for (const gz of this.dangerZones) {
+      const d = b.pos.distanceTo(gz);
+      if (d < 6.5 && b.dangerT <= 0) {
+        b.dangerT = 2.2; const away = b.pos.clone().sub(gz).setY(0).normalize();
+        const wps = this.map.waypoints.filter((w) => w.links.length > 0 && w.pos.distanceTo(gz) > 9 && w.pos.distanceTo(b.pos) < 16);
+        let bestW = -1, bs = -Infinity; for (const w of wps) { const v = w.pos.clone().sub(b.pos).setY(0).normalize(); const sc = v.dot(away) * 10 - w.pos.distanceTo(b.pos) * 0.3; if (sc > bs) { bs = sc; bestW = w.id; } }
+        if (bestW >= 0) this.setGoal(b, bestW); break;
+      }
+    }
+    // take cover while reloading or when hurt, then come back out
+    if (b.state === 'cover') { b.coverT -= dt; if (b.coverT <= 0 || !b.target) { b.state = b.target ? 'engage' : 'patrol'; b.path = []; b.goal = -1; } }
+    else if (b.state === 'engage' && b.target && b.visible && b.coverCd <= 0 && ((b.reloading && b.reloadT > 0.8) || (b.health < 45 && Math.random() < 0.02))) {
+      const tp = b.target.pos; const cands = this.map.waypoints.filter((w) => w.links.length > 0 && w.pos.distanceTo(b.pos) < 14 && w.pos.distanceTo(tp) > 5);
+      let bestW = -1, bs = Infinity;
+      for (const w of cands) { const eye = w.pos.clone().add(new THREE.Vector3(0, 1.0, 0)); if (!this.physics.clearLine(eye, tp)) { const sc = w.pos.distanceTo(b.pos); if (sc < bs) { bs = sc; bestW = w.id; } } }
+      if (bestW >= 0) { this.setGoal(b, bestW); b.state = 'cover'; b.coverT = b.reloading ? Math.max(1.2, b.reloadT + 0.4) : rand(2.5, 4); b.coverCd = 9; }
+    }
     if (b.visible) b.seeT += dt; else b.seeT = 0;
     b.reactionT -= dt;
     // ---- aim
@@ -229,7 +261,7 @@ export class BotManager {
       } else b.grenadeT = 4;
     }
     if (b.reloading) { b.reloadT -= dt; if (b.reloadT <= 0) { b.reloading = false; const take = Math.min(b.def.mag, b.reserve); b.mag = take; b.reserve -= take; if (b.reserve < b.def.mag * 2) b.reserve += b.def.mag * 6; } }
-    else if (b.target && b.visible && b.reactionT <= 0 && b.state !== 'retreat' || (b.target && b.visible && b.state === 'retreat' && Math.random() < 0.02)) {
+    else if (b.target && b.visible && b.reactionT <= 0 && b.state !== 'retreat' && !(b.state === 'cover' && b.reloading) || (b.target && b.visible && b.state === 'retreat' && Math.random() < 0.02)) {
       const dist = b.eyePos.distanceTo(b.target!.pos);
       const aimErr = Math.abs(wrapAngle(Math.atan2(b.target!.pos.x - b.pos.x, b.target!.pos.z - b.pos.z) - b.aimYaw));
       if (aimErr < 6 * DEG && b.fireT <= 0 && b.burstPause <= 0 && !DEBUG.passive) {
@@ -264,7 +296,7 @@ export class BotManager {
 
   /** Difficulty preset: adjusts reaction/accuracy (skill) and damage dealt. */
   setDifficulty(level: 'recruit' | 'regular' | 'veteran') {
-    const skills = level === 'recruit' ? [0.3, 0.42, 0.55] : level === 'veteran' ? [0.8, 0.9, 1.0] : [0.55, 0.72, 0.88];
+    const skills = level === 'recruit' ? [0.3, 0.42, 0.55, 0.5, 0.35, 0.45, 0.5] : level === 'veteran' ? [0.8, 0.9, 1.0, 0.95, 0.85, 0.9, 0.92] : [0.55, 0.72, 0.88, 0.8, 0.5, 0.66, 0.76];
     const dmg = level === 'recruit' ? 0.6 : level === 'veteran' ? 1.0 : 0.85;
     this.bots.forEach((b, i) => { b.skill = skills[i % skills.length]; b.dmgMul = dmg; });
   }
@@ -298,12 +330,15 @@ export class BotManager {
   private botShoot(b: Bot, dist: number) {
     const d = b.def;
     // accuracy: improves the longer the target is tracked, worsens with distance & target speed
-    const tgtSpeed = b.target!.entity.speed ?? (b.target!.entity.vel ? Math.hypot(b.target!.entity.vel.x, b.target!.entity.vel.z) : 0);
+    const tv = b.target!.entity.vel as THREE.Vector3 | undefined;
+    const tgtSpeed = b.target!.entity.speed ?? (tv ? Math.hypot(tv.x, tv.z) : 0);
     let err = lerp(5.5, 1.6, b.skill) * lerp(2.4, 1, clamp(b.seeT / 1.3, 0, 1));
     err += tgtSpeed * 0.35 + dist * 0.035; if (b.crouch) err *= 0.8; if (d.cls === 'sniper') err *= 0.55;
     const eye = b.eyePos.clone();
     // aim point: chest, occasionally head
     const aimPt = (Math.random() < 0.18 * b.skill ? b.target!.head : b.target!.pos).clone();
+    // lead moving targets by their travel during the bullet's flight (skilled bots lead better)
+    if (tv) aimPt.addScaledVector(tv, (dist / d.bulletSpeed) * lerp(0.3, 1.0, b.skill));
     const dir = coneDir(aimPt.sub(eye).normalize(), err);
     const muzzle = new THREE.Vector3(); b.muzzle.getWorldPosition(muzzle);
     if (muzzle.lengthSq() < 1) muzzle.copy(eye);
@@ -317,7 +352,7 @@ export class BotManager {
     if (d.cls === 'sniper') this.audio.play3D('shot_bolt3_far', muzzle, { vol: 0.8, rate: 0.88, ref: 10, rolloff: 0.6, max: 400, reverb: 0.7 });
     b.mag--; this.events.onShot(b, eye);
     // fire cadence: bursts for autos, single for semi/bolt/pump
-    if (d.mode === 'auto') { b.fireT = 60 / d.rpm * rand(1, 1.3); if (--b.burstLeft <= 0) { b.burstLeft = Math.round(rand(3, 7)); b.burstPause = rand(0.25, 0.7) * lerp(1.4, 0.7, b.skill); } }
+    if (d.mode === 'auto') { b.fireT = 60 / d.rpm * rand(1, 1.3); if (--b.burstLeft <= 0) { const close = dist < 12, mid = dist < 28; b.burstLeft = Math.round(close ? rand(6, 10) : mid ? rand(3, 6) : rand(2, 3)); b.burstPause = (close ? rand(0.15, 0.4) : mid ? rand(0.3, 0.7) : rand(0.5, 1.0)) * lerp(1.4, 0.7, b.skill); } }
     else if (d.mode === 'bolt') b.fireT = d.boltTime + rand(0.4, 1.0);
     else if (d.mode === 'pump') b.fireT = d.boltTime + rand(0.2, 0.5);
     else b.fireT = 60 / d.rpm * rand(1.3, 2.2);

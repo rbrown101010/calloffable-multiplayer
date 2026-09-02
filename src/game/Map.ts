@@ -103,8 +103,10 @@ export class RustMap {
   spawns: SpawnPoint[] = [];
   waypoints: Waypoint[] = [];
   ladders: Ladder[] = [];
-  bounds = 31;
-  private heights!: Float32Array; private hSeg = 140; private hSize = 150;
+  /** half-size of the playable square (fence at PLAY-0.6, hard boundary at PLAY) */
+  static PLAY = 48;
+  bounds = 48;
+  private heights!: Float32Array; private hSeg = 180; private hSize = 240;
   groundMesh!: THREE.Mesh;
   mats!: Record<string, THREE.Material>;
 
@@ -112,8 +114,8 @@ export class RustMap {
 
   groundHeight(x: number, z: number) {
     const r = Math.hypot(x, z) * 0.55 + Math.max(Math.abs(x), Math.abs(z)) * 0.45;
-    let h = smoothstep(31, 50, r) * 7 + smoothstep(48, 75, r) * 12;
-    h += fbm(x * 0.06, z * 0.06, 3) * 0.6 * smoothstep(27, 36, r);
+    let h = smoothstep(50, 72, r) * 7 + smoothstep(68, 100, r) * 14;
+    h += fbm(x * 0.06, z * 0.06, 3) * 0.6 * smoothstep(46, 56, r);
     h += fbm(x * 0.9 + 3, z * 0.9 + 7, 2) * 0.025;
     h += fbm(x * 0.25, z * 0.25, 2) * 0.05;
     return h;
@@ -174,6 +176,7 @@ export class RustMap {
     this.buildTower(B, M);
     this.buildStructures(B, M);
     this.buildProps(B, M);
+    this.buildOuterRing(B, M);
     this.buildPerimeter(B, M);
     B.finish();
     // make the freshly created colliders visible to scene queries before we probe the map for waypoints
@@ -198,7 +201,7 @@ export class RustMap {
     this.physics.addStaticTrimesh(mesh, G.WORLD, { surface: 'sand' });
     // far ground
     const far = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600, 1, 1).rotateX(-Math.PI / 2), M.sandFar);
-    far.position.y = 18.5; far.receiveShadow = false; far.matrixAutoUpdate = false; far.updateMatrix(); this.group.add(far);
+    far.position.y = 21.5; far.receiveShadow = false; far.matrixAutoUpdate = false; far.updateMatrix(); this.group.add(far);
     // dirt patches / tire tracks as decal-like planes slightly above ground
     const track = (x: number, z: number, len: number, yaw: number, w = 0.9) => {
       const g = new THREE.PlaneGeometry(w, len, 1, 8).rotateX(-Math.PI / 2);
@@ -214,6 +217,9 @@ export class RustMap {
     track(-12, 4, 40, 0.15 * DEG * 10); track(-10.5, 4, 40, 0.15 * DEG * 10, 0.8);
     track(10, -12, 30, 80 * DEG); track(10, -10.6, 30, 80 * DEG, 0.8);
     track(6, 16, 26, -20 * DEG); track(7.4, 16, 26, -20 * DEG, 0.8);
+    track(-30, -20, 60, 8 * DEG); track(-28.6, -20, 60, 8 * DEG, 0.8);
+    track(30, 18, 50, 95 * DEG); track(30, 19.4, 50, 95 * DEG, 0.8);
+    track(0, 36, 70, 88 * DEG); track(0, 37.4, 70, 88 * DEG, 0.8);
   }
 
   // ---------------------------------------------------------------- TOWER
@@ -468,7 +474,7 @@ export class RustMap {
       const panel = chainLinkMaterial(); panel.userData.surface = 'metal';
       B.box(panel, [0.02, 2.2, len], [x0 + dx / 2, 1.2, z0 + dz / 2], { rot: [0, yaw, 0], tile: 0.5, collide: true, shadow: false });
     };
-    const F = 29.4; fence(-F, -F, F, -F); fence(F, -F, F, F); fence(F, F, -F, F); fence(-F, F, -F, -F);
+    const F = RustMap.PLAY - 0.6; fence(-F, -F, F, -F); fence(F, -F, F, F); fence(F, F, -F, F); fence(-F, F, -F, -F);
     // --- concrete barriers (jersey) for cover
     const jersey = (x: number, z: number, yaw: number) => B.box(M.concreteBlock, [2.0, 0.9, 0.5], [x, 0.45, z], { rot: [0, yaw * DEG, 0], tile: 2 });
     jersey(6, 20, 20); jersey(8.2, 19.6, 20); jersey(-14, -22, 80); jersey(-14.4, -19.8, 80); jersey(24, 4, 0); jersey(26, 4, 0); jersey(2, -22, -10);
@@ -549,12 +555,161 @@ export class RustMap {
     barrel(20.5, 4, M.barrelRust); barrel(21.2, 4.4, M.barrelRust); barrel(20.85, 4.2, M.barrelRust, false, 0.88);
   }
 
+  // ---------------------------------------------------------------- OUTER RING (8-player expansion)
+  private truck(B: Builder, M: Record<string, THREE.Material>, tx: number, tz: number, yawDeg: number) {
+    const yaw = yawDeg * DEG; const rot: [number, number, number] = [0, yaw, 0];
+    const L = (lx: number, ly: number, lz: number): [number, number, number] => [tx + lx * Math.cos(yaw) + lz * Math.sin(yaw), ly, tz - lx * Math.sin(yaw) + lz * Math.cos(yaw)];
+    B.box(M.rustCoarse, [5.6, 0.5, 2.2], L(0, 0.75, 0), { rot, tile: 1.2 });
+    B.box(M.rustCoarse, [2.0, 1.5, 2.2], L(1.8, 1.75, 0), { rot, tile: 1.2 });
+    B.box(M.glass, [0.05, 0.7, 1.9], L(0.82, 1.95, 0), { rot, tile: 1, collide: false, shadow: false });
+    B.box(M.rustCoarse, [3.4, 0.6, 2.2], L(-1.1, 1.3, 0), { rot, tile: 1.2 });
+    B.box(M.rustCoarse, [3.4, 0.5, 0.08], L(-1.1, 1.85, 1.06), { rot, tile: 1.2 }); B.box(M.rustCoarse, [3.4, 0.5, 0.08], L(-1.1, 1.85, -1.06), { rot, tile: 1.2 });
+    for (const [lx, lz] of [[1.9, 1.05], [1.9, -1.05], [-1.9, 1.05], [-1.9, -1.05]]) B.cyl(M.rubber, 0.48, 0.32, L(lx, 0.48, lz), { rot: [Math.PI / 2, 0, yaw], seg: 18, tile: 1 });
+  }
+
+  private watchtower(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, h: number) {
+    const half = 1.6;
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B.box(M.roughWood, [0.22, h + 0.3, 0.22], [x + sx * half, (h + 0.3) / 2, z + sz * half], { tile: 1 });
+    B.box(M.planks, [half * 2 + 0.6, 0.12, half * 2 + 0.6], [x, h + 0.06, z], { tile: 1.4, surface: 'wood' });
+    for (const yy of [1.5, h * 0.55]) { B.box(M.roughWood, [half * 2, 0.12, 0.12], [x, yy, z - half], { tile: 1 }); B.box(M.roughWood, [half * 2, 0.12, 0.12], [x, yy, z + half], { tile: 1 }); B.box(M.roughWood, [0.12, 0.12, half * 2], [x - half, yy, z], { tile: 1 }); B.box(M.roughWood, [0.12, 0.12, half * 2], [x + half, yy, z], { tile: 1 }); }
+    // roof
+    B.box(M.corrRust, [half * 2 + 1.2, 0.06, half * 2 + 1.2], [x, h + 2.4, z], { rot: [0.1, 0, 0], tile: 1.6 });
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B.box(M.roughWood, [0.1, 2.3, 0.1], [x + sx * (half + 0.3), h + 1.25, z + sz * (half + 0.3)], { collide: false });
+    // railings with the south side open for the stair
+    const e = half + 0.3, ry = h + 0.12;
+    const rail = (x0: number, z0: number, x1: number, z1: number) => { const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz), yaw = Math.atan2(dx, dz); B.box(M.roughWood, [0.06, 0.06, len], [x0 + dx / 2, ry + 1.0, z0 + dz / 2], { rot: [0, yaw, 0], collide: false }); B.box(M.roughWood, [0.06, 0.06, len], [x0 + dx / 2, ry + 0.55, z0 + dz / 2], { rot: [0, yaw, 0], collide: false }); this.physics.addStaticBox(new THREE.Vector3(x0 + dx / 2, ry + 0.55, z0 + dz / 2), new THREE.Vector3(0.04, 0.6, len), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)), G.WORLD, { surface: 'wood' }); };
+    rail(x - e, z - e, x + e, z - e); rail(x - e, z - e, x - e, z + e); rail(x + e, z - e, x + e, z + e); rail(x - e, z + e, x - 0.7, z + e); rail(x + 0.7, z + e, x + e, z + e);
+    this.stair(B, M, x, z + half + 0.35 + h * 1.35, 0, 180, h + 0.12, h * 1.35, 1.3, 'watch');
+  }
+
+  private pumpjack(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, yawDeg: number) {
+    const yaw = yawDeg * DEG; const rot: [number, number, number] = [0, yaw, 0];
+    const L = (lx: number, ly: number, lz: number): [number, number, number] => [x + lx * Math.cos(yaw) + lz * Math.sin(yaw), ly, z - lx * Math.sin(yaw) + lz * Math.cos(yaw)];
+    B.box(M.cracked, [7, 0.3, 3.2], L(0, 0.15, 0), { rot, tile: 3 });
+    // samson post (A-frame)
+    B.box(M.steelPainted, [0.3, 4.6, 0.3], L(0.4, 2.6, -1.0), { rot: [0.32, yaw, 0], tile: 1 });
+    B.box(M.steelPainted, [0.3, 4.6, 0.3], L(0.4, 2.6, 1.0), { rot: [-0.32, yaw, 0], tile: 1 });
+    B.box(M.steelPainted, [0.3, 4.6, 0.3], L(-0.3, 2.6, 0), { rot: [0, yaw, 0.15], tile: 1 });
+    // walking beam + horsehead + counterweight
+    B.box(M.steelPainted, [6.4, 0.5, 0.5], L(0.2, 4.7, 0), { rot: [0, yaw, 0.08], tile: 1.5 });
+    B.box(M.steelPainted, [0.8, 1.6, 0.9], L(3.4, 4.6, 0), { rot, tile: 1.5 });
+    B.box(M.rustCoarse, [1.2, 1.4, 1.2], L(-2.8, 5.0, 0), { rot, tile: 1.2 });
+    B.box(M.steelDark, [0.16, 3.6, 0.16], L(3.5, 2.0, 0), { rot, tile: 1, collide: false });
+    // crank / motor housing
+    B.box(M.greenMetal, [2.0, 1.4, 1.6], L(-2.6, 0.95, 0), { rot, tile: 1.5 });
+    B.cyl(M.steelDark, 0.9, 0.3, L(-2.0, 1.9, 1.0), { rot: [Math.PI / 2, 0, yaw], seg: 24, tile: 1 });
+    B.cyl(M.pipe, 0.25, 4, L(4.4, 0.6, 0), { rot: [Math.PI / 2, 0, yaw], tile: 1.2, collide: true });
+  }
+
+  private garage(B: Builder, M: Record<string, THREE.Material>, gx: number, gz: number) {
+    const w = 10, d = 8, h = 4.0, t = 0.25;
+    B.box(M.concreteFloor, [w + 0.8, 0.2, d + 0.8], [gx, 0.1, gz], { tile: 2.5 });
+    B.box(M.corr, [w, h, 0.1], [gx, h / 2 + 0.2, gz + d / 2], { tile: 1.6 });                // back (south)
+    B.box(M.corr, [0.1, h, d], [gx - w / 2, h / 2 + 0.2, gz], { tile: 1.6 });                // west
+    B.box(M.corr, [0.1, h, d / 2 - 1.2], [gx + w / 2, h / 2 + 0.2, gz + d / 4 + 0.6], { tile: 1.6 }); // east with a side door
+    B.box(M.corr, [0.1, h, d / 2 - 1.2], [gx + w / 2, h / 2 + 0.2, gz - d / 4 - 0.6], { tile: 1.6 });
+    B.box(M.corr, [0.1, h - 2.3, 2.4], [gx + w / 2, 0.2 + 2.3 + (h - 2.3) / 2, gz], { tile: 1.6 });
+    B.box(M.corr, [w * 0.25, h, 0.1], [gx - w / 2 + w * 0.125, h / 2 + 0.2, gz - d / 2], { tile: 1.6 }); // front partial (north) - big opening
+    B.box(M.corr, [w, h - 3.0, 0.1], [gx, 0.2 + 3.0 + (h - 3.0) / 2, gz - d / 2], { tile: 1.6 });   // lintel
+    B.box(M.corrRust, [w + 0.8, 0.08, d + 0.8], [gx, h + 0.26, gz], { tile: 1.6 });          // flat roof (walkable)
+    for (const [px, pz] of [[gx - w / 2, gz - d / 2], [gx + w / 2, gz - d / 2], [gx - w / 2, gz + d / 2], [gx + w / 2, gz + d / 2], [gx + w / 4, gz - d / 2]]) B.box(M.steelDark, [0.18, h + 0.3, 0.18], [px, (h + 0.3) / 2 + 0.2, pz], { tile: 1 });
+    // roof parapet (low) except the ladder side
+    for (const [px, pz, sw, sd] of [[gx, gz - d / 2 - 0.35, w + 0.8, 0.12], [gx - w / 2 - 0.35, gz, 0.12, d + 0.8], [gx + w / 2 + 0.35, gz, 0.12, d + 0.8]]) B.box(M.steelDark, [sw, 0.4, sd], [px, h + 0.5, pz], { tile: 1 });
+    this.ladder(B, M, gx, gz + d / 2 + 0.05, 0.2, h + 0.3, new THREE.Vector3(0, 0, -1));
+    // interior: truck + bench + drums
+    this.truck(B, M, gx - 1.5, gz + 0.5, 90);
+    B.box(M.roughWood, [0.8, 0.9, 3.0], [gx + w / 2 - 0.7, 0.65, gz + 1.5], { tile: 1 });
+    B.cyl(M.barrelRust, 0.3, 0.88, [gx + w / 2 - 0.8, 0.64, gz - 2.5], { seg: 18, tile: 0.9 }); B.cyl(M.barrelBlue, 0.3, 0.88, [gx + w / 2 - 1.5, 0.64, gz - 2.9], { seg: 18, tile: 0.9 });
+  }
+
+  private pillbox(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, faceYawDeg: number) {
+    const s = 3.2, h = 2.3, t = 0.4; const yaw = faceYawDeg * DEG; const rot: [number, number, number] = [0, yaw, 0];
+    const L = (lx: number, ly: number, lz: number): [number, number, number] => [x + lx * Math.cos(yaw) + lz * Math.sin(yaw), ly, z - lx * Math.sin(yaw) + lz * Math.cos(yaw)];
+    B.box(M.cracked, [s + 0.6, 0.2, s + 0.6], L(0, 0.1, 0), { rot, tile: 2 });
+    // front wall with firing slit (facing -Z local)
+    B.box(M.concrete, [s, 1.3, t], L(0, 0.2 + 0.65, -s / 2), { rot, tile: 2.2 });
+    B.box(M.concrete, [s, 0.5, t], L(0, 0.2 + 1.3 + 0.35 + 0.25, -s / 2), { rot, tile: 2.2 });
+    B.box(M.concrete, [0.5, 0.35, t], L(-s / 2 + 0.25, 0.2 + 1.3 + 0.175, -s / 2), { rot, tile: 2.2 }); B.box(M.concrete, [0.5, 0.35, t], L(s / 2 - 0.25, 0.2 + 1.3 + 0.175, -s / 2), { rot, tile: 2.2 });
+    B.box(M.concrete, [t, h, s], L(-s / 2, 0.2 + h / 2, 0), { rot, tile: 2.2 }); B.box(M.concrete, [t, h, s], L(s / 2, 0.2 + h / 2, 0), { rot, tile: 2.2 });
+    B.box(M.concrete, [s / 2 - 0.6, h, t], L(-s / 4 - 0.3, 0.2 + h / 2, s / 2), { rot, tile: 2.2 }); B.box(M.concrete, [s / 2 - 0.6, h, t], L(s / 4 + 0.3, 0.2 + h / 2, s / 2), { rot, tile: 2.2 }); // rear door
+    B.box(M.cracked, [s + 0.6, 0.3, s + 0.6], L(0, 0.2 + h + 0.15, 0), { rot, tile: 2 });
+    this.sandbags(B, M, ...[L(0, 0, -s / 2 - 1.2)[0], L(0, 0, -s / 2 - 1.2)[2]] as [number, number], faceYawDeg);
+  }
+
+  private hangar(B: Builder, M: Record<string, THREE.Material>, hx: number, hz: number, yawDeg: number) {
+    const r = 4.2, len = 14; const yaw = yawDeg * DEG;
+    // arch roof (visual) + segmented colliders
+    const g = new THREE.CylinderGeometry(r, r, len, 32, 1, true, 0, Math.PI);
+    const uv = g.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (Math.PI * r) / 1.6, uv.getY(i) * len / 1.6);
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(hx, 0.3, hz), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI / 2))).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0))), new THREE.Vector3(1, 1, 1));
+    B.custom(M.corrRust, g, m, false, 'metal');
+    const segs = 7;
+    for (let i = 0; i < segs; i++) {
+      const a0 = (i / segs) * Math.PI, a1 = ((i + 1) / segs) * Math.PI; const am = (a0 + a1) / 2; const chord = 2 * r * Math.sin((a1 - a0) / 2);
+      const cx = Math.cos(am) * r, cy = Math.sin(am) * r;
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, am - Math.PI / 2)));
+      const pos = new THREE.Vector3(cx, 0.3 + cy, 0).applyEuler(new THREE.Euler(0, yaw, 0)).add(new THREE.Vector3(hx, 0, hz));
+      this.physics.addStaticBox(pos, new THREE.Vector3(chord + 0.1, 0.12, len), q, G.WORLD, { surface: 'metal' });
+    }
+    B.box(M.concreteFloor, [2 * r + 0.6, 0.3, len + 0.6], [hx, 0.15, hz], { rot: [0, yaw, 0], tile: 2.5 });
+    // contents
+    const L = (lx: number, lz: number): [number, number] => [hx + lx * Math.cos(yaw) + lz * Math.sin(yaw), hz - lx * Math.sin(yaw) + lz * Math.cos(yaw)];
+    const [cx1, cz1] = L(1.5, -3); B.box(M.plywood, [1.3, 1.1, 1.3], [cx1, 0.85, cz1], { rot: [0, yaw + 0.3, 0], tile: 1.1 });
+    const [cx2, cz2] = L(-1.8, 3.5); B.cyl(M.barrelRust, 0.3, 0.88, [cx2, 0.74, cz2], { seg: 18, tile: 0.9 }); B.cyl(M.barrelRust, 0.3, 0.88, [cx2 + 0.65, 0.74, cz2 + 0.2], { seg: 18, tile: 0.9 });
+    const [cx3, cz3] = L(0.5, 4.5); B.box(M.roughWood, [2.2, 0.9, 0.8], [cx3, 0.75, cz3], { rot: [0, yaw, 0], tile: 1 });
+  }
+
+  private buildOuterRing(B: Builder, M: Record<string, THREE.Material>) {
+    // --- NORTH: second container yard + watchtower
+    this.container(B, M, M.contBlue, -14, 0, -38, 0, 12.2, { openA: true });
+    this.container(B, M, M.contRed, -15.5, 2.6, -40.6, 6, 12.2);
+    this.container(B, M, M.contRust, -1, 0, -41, 90, 6.1, { openB: true });
+    this.container(B, M, M.contGreen, 9, 0, -36, 0, 12.2, { openB: true });
+    this.ramp(B, M, 16.6, -36, 0, 2.6, 4.2, 1.6, 270, M.planks);
+    this.watchtower(B, M, 26, -41, 4.6);
+    B.box(M.plywood, [1.2, 1.0, 1.2], [3, 0.6, -33], { tile: 1.1 }); B.box(M.plywood, [1.0, 0.9, 1.0], [-20, 0.55, -33.5], { tile: 1.1 });
+    B.cyl(M.pipe2, 0.7, 26, [-28, 0.7, -30], { rot: [0, 0, Math.PI / 2], tile: 1.6, seg: 28 });
+    // --- EAST: pump station + garage
+    this.pumpjack(B, M, 39, -10, 0);
+    this.pumpjack(B, M, 40, -24, 180);
+    B.cyl(M.pipe, 0.35, 16, [36, 0.5, -17], { rot: [Math.PI / 2, 0, 0], tile: 1.4 });
+    this.garage(B, M, 38, 14);
+    for (const [x, z] of [[31, 2], [31.7, 2.6], [30.9, 3.2]]) B.cyl(M.barrelBlue, 0.3, 0.88, [x, 0.44, z], { seg: 18, tile: 0.9 });
+    B.box(M.concreteBlock, [2.0, 0.9, 0.5], [32, 0.45, 26], { rot: [0, 0.4, 0], tile: 2 }); B.box(M.concreteBlock, [2.0, 0.9, 0.5], [34, 0.45, 25.4], { rot: [0, 0.4, 0], tile: 2 });
+    // --- SOUTH: trench line (pillboxes + sandbag line) and truck depot
+    this.pillbox(B, M, -22, 38, 180); this.pillbox(B, M, 22, 38, 180);
+    for (const x of [-14, -8, 8, 14]) this.sandbags(B, M, x, 37.5, 0);
+    this.truck(B, M, -4, 43, 10); this.truck(B, M, 4, 43, -8);
+    B.cyl(M.rustyShutter, 1.2, 5, [12, 1.6, 44], { rot: [0, 0, Math.PI / 2], seg: 24, tile: 1.8 }); // fuel bowser
+    for (const s of [-1, 1]) B.box(M.steelDark, [0.2, 1.0, 1.4], [12 + s * 1.8, 0.5, 44], { tile: 1 });
+    B.cyl(M.pipe2, 0.7, 22, [0, 0.7, 31], { rot: [0, 0, Math.PI / 2], tile: 1.6, seg: 28 });
+    // --- WEST: twin tanks with a top walkway + hangar
+    const tanks: [number, number][] = [[-41, -14], [-41, 2]]; const r = 3.6, h = 5.0;
+    for (const [tx, tz] of tanks) {
+      B.cyl(M.cracked, r + 0.6, 0.3, [tx, 0.15, tz], { seg: 40, tile: 3 });
+      B.cyl(M.rustyShutter, r, h, [tx, 0.3 + h / 2, tz], { seg: 44, tile: 2 });
+      B.cyl(M.steelDark, r + 0.05, 0.25, [tx, 0.3 + h + 0.125, tz], { seg: 44, tile: 2 });
+      const posts = 14; for (let i = 0; i < posts; i++) { const a = (i / posts) * Math.PI * 2; B.box(M.steelDark, [0.05, 1.0, 0.05], [tx + Math.cos(a) * (r - 0.1), 0.3 + h + 0.25 + 0.5, tz + Math.sin(a) * (r - 0.1)], { collide: false }); }
+      B.cyl(M.steelDark, r - 0.1, 0.05, [tx, 0.3 + h + 0.25 + 1.0, tz], { seg: 44, open: true, tile: 1, collide: false });
+    }
+    B.box(M.grate, [1.4, 0.1, 16 - 2 * r + 0.4], [-41, 0.3 + h + 0.3, -6], { tile: 0.8 }); // walkway between the tanks
+    for (const s of [-1, 1]) { B.box(M.steelDark, [0.05, 0.05, 16 - 2 * r + 0.4], [-41 + s * 0.68, 0.3 + h + 0.3 + 1.0, -6], { collide: false }); this.physics.addStaticBox(new THREE.Vector3(-41 + s * 0.68, 0.3 + h + 0.3 + 0.55, -6), new THREE.Vector3(0.04, 0.6, 16 - 2 * r + 0.4), undefined, G.WORLD, { surface: 'metal' }); }
+    this.ladder(B, M, -41 + r + 0.1, -14, 0.3, 0.3 + h + 0.25, new THREE.Vector3(-1, 0, 0));
+    B.cyl(M.pipe, 0.35, 10, [-34, 0.9, -6], { rot: [Math.PI / 2, 0, 0], tile: 1.4 });
+    this.hangar(B, M, -38, 26, 90);
+    B.box(M.plywood, [1.2, 1.0, 1.2], [-30, 0.6, 14], { tile: 1.1 }); B.box(M.roughWood, [1.0, 0.85, 1.0], [-31.2, 0.5, 14.5], { tile: 1 });
+    // --- scattered cover along the ring roads
+    const jersey = (x: number, z: number, yaw: number) => B.box(M.concreteBlock, [2.0, 0.9, 0.5], [x, 0.45, z], { rot: [0, yaw * DEG, 0], tile: 2 });
+    jersey(-30, -30, 30); jersey(-28, -31, 30); jersey(30, -32, -20); jersey(28, 34, 60); jersey(-26, 34, -50); jersey(0, -46, 0); jersey(2.2, -46, 0); jersey(-46, 0, 90); jersey(46, -2, 90);
+    for (const [x, z] of [[-33, -22], [34, 33], [-22, -44], [24, 44], [44, -40], [-44, 42]]) { B.box(M.plywood, [1.2, 1.0, 1.2], [x, 0.6, z], { rot: [0, rand(0, 6), 0], tile: 1.1 }); B.cyl(M.barrelRust, 0.3, 0.88, [x + 1.3, 0.44, z + 0.4], { seg: 18, tile: 0.9 }); }
+  }
+
   // ---------------------------------------------------------------- PERIMETER
   private buildPerimeter(B: Builder, M: Record<string, THREE.Material>) {
     // boulders in a ring
-    const N = 46;
+    const N = 70;
     for (let i = 0; i < N; i++) {
-      const a = (i / N) * Math.PI * 2 + rand(-0.06, 0.06); const rr = 33 + rand(0, 7);
+      const a = (i / N) * Math.PI * 2 + rand(-0.06, 0.06); const rr = 52 + rand(0, 8);
       const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
       const s = rand(2.2, 5.5);
       const g = mergeVertices(new THREE.IcosahedronGeometry(1, 4)); const p = g.attributes.position as THREE.BufferAttribute;
@@ -566,7 +721,7 @@ export class RustMap {
       B.custom(i % 3 === 0 ? M.laterite : M.sandstone, g, m, 'hull', 'rock');
     }
     // a few boulders inside the play area for cover
-    for (const [x, z, s] of [[-24, -6, 2.2], [24, 22, 2.6], [-8, 24, 1.8], [24, -24, 2.4]]) {
+    for (const [x, z, s] of [[-24, -6, 2.2], [24, 22, 2.6], [-8, 24, 1.8], [24, -24, 2.4], [-40, 10, 2.6], [38, -34, 2.9], [12, 44, 2.1], [-36, -40, 3.1], [44, 22, 2.4], [-44, 40, 2.6], [30, 40, 2.2], [-6, -44, 2.4]]) {
       const g = mergeVertices(new THREE.IcosahedronGeometry(1, 4)); const p = g.attributes.position as THREE.BufferAttribute;
       for (let k = 0; k < p.count; k++) { const v = new THREE.Vector3(p.getX(k), p.getY(k), p.getZ(k)); v.multiplyScalar(1 + fbm(v.x * 1.6 + x, v.z * 1.6 + v.y + z, 4) * 0.26 + fbm(v.x * 4 + x, v.y * 4, 2) * 0.05); p.setXYZ(k, v.x, v.y * 0.65, v.z); }
       g.computeVertexNormals(); const uv = g.attributes.uv as THREE.BufferAttribute; for (let k = 0; k < uv.count; k++) { const ang = Math.atan2(p.getZ(k), p.getX(k)); uv.setXY(k, ang * s / 3, (p.getY(k) + Math.hypot(p.getX(k), p.getZ(k)) * 0.5) * s / 3); }
@@ -574,8 +729,8 @@ export class RustMap {
       B.custom(M.sandstone, g, m, 'hull', 'rock');
     }
     // desert scrub on the dunes (visual only) and small rocks near the fence line
-    for (let i = 0; i < 90; i++) {
-      const a = rand(0, Math.PI * 2); const rr = rand(30, 52); const x = Math.cos(a) * rr, z = Math.sin(a) * rr; const y = this.groundHeight(x, z);
+    for (let i = 0; i < 140; i++) {
+      const a = rand(0, Math.PI * 2); const rr = rand(49, 76); const x = Math.cos(a) * rr, z = Math.sin(a) * rr; const y = this.groundHeight(x, z);
       const n = 2 + Math.floor(rand(0, 4));
       for (let k = 0; k < n; k++) {
         const s = rand(0.35, 0.8); const g = new THREE.IcosahedronGeometry(1, 1); const p = g.attributes.position as THREE.BufferAttribute;
@@ -585,16 +740,16 @@ export class RustMap {
         B.custom(M.scrub, g, m, false, 'cloth');
       }
     }
-    for (let i = 0; i < 40; i++) {
-      const a = rand(0, Math.PI * 2); const rr = rand(29, 46); const x = Math.cos(a) * rr, z = Math.sin(a) * rr; const s = rand(0.5, 1.4);
+    for (let i = 0; i < 70; i++) {
+      const a = rand(0, Math.PI * 2); const rr = rand(30, 66); const x = Math.cos(a) * rr, z = Math.sin(a) * rr; const s = rand(0.5, 1.4);
       const g = mergeVertices(new THREE.IcosahedronGeometry(1, 2)); const p = g.attributes.position as THREE.BufferAttribute;
       for (let q = 0; q < p.count; q++) { const v = new THREE.Vector3(p.getX(q), p.getY(q), p.getZ(q)); v.multiplyScalar(1 + fbm(v.x * 2 + i, v.z * 2 + v.y, 3) * 0.3); p.setXYZ(q, v.x, v.y * 0.6, v.z); }
       g.computeVertexNormals(); const uv = g.attributes.uv as THREE.BufferAttribute; for (let q = 0; q < uv.count; q++) { const ang = Math.atan2(p.getZ(q), p.getX(q)); uv.setXY(q, ang * s / 2, (p.getY(q) + 1) * s / 2); }
       const m = new THREE.Matrix4().compose(new THREE.Vector3(x, this.groundHeight(x, z) + s * 0.2, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rand(0, 6), 0)), new THREE.Vector3(s, s * 0.8, s));
-      B.custom(M.rock3, g, m, rr < 33 ? 'hull' : false, 'rock');
+      B.custom(M.rock3, g, m, rr < 50 ? 'hull' : false, 'rock');
     }
     // invisible boundary walls
-    const b = 29.9; this.bounds = b;
+    const b = RustMap.PLAY; this.bounds = b;
     for (const [x, z, w, d] of [[0, -b, b * 2 + 4, 1], [0, b, b * 2 + 4, 1], [-b, 0, 1, b * 2 + 4], [b, 0, 1, b * 2 + 4]]) this.physics.addStaticBox(new THREE.Vector3(x, 10, z), new THREE.Vector3(w, 30, d), undefined, G.WORLD, { surface: 'none', invisible: true });
   }
 
@@ -602,8 +757,8 @@ export class RustMap {
   private defineSpawns() {
     // yaw faces the map center (player convention: forward = (-sin yaw, -cos yaw))
     const S = (x: number, z: number, _yawDeg: number) => this.spawns.push({ pos: new THREE.Vector3(x, this.groundHeight(x, z) + 0.05, z), yaw: Math.atan2(x, z) });
-    S(-24, 22, 135); S(24, 22, -135); S(24, -24, -45); S(-24, -24, 45); S(-25, 4, 90); S(25, -14, -90);
-    S(0, 24, 180); S(-2, -26, 0); S(-18, -22, 30); S(21, 21, -150); S(-24, 10, 110); S(24, 0, -90);
+    S(-24, 22, 0); S(24, 22, 0); S(24, -24, 0); S(-24, -24, 0); S(-25, 4, 0); S(25, -14, 0); S(0, 24, 0); S(-2, -26, 0);
+    S(-40, 40, 0); S(40, 40, 0); S(40, -40, 0); S(-40, -40, 0); S(-44, 20, 0); S(44, 0, 0); S(0, 45, 0); S(-8, -46, 0); S(30, -44, 0); S(-30, 44, 0); S(44, 30, 0); S(-44, -26, 0);
   }
 
   private defineWaypoints() {
@@ -612,9 +767,10 @@ export class RustMap {
     // ground grid (skip inside solids)
     const gh = (x: number, z: number) => this.groundHeight(x, z);
     const gridPts: [number, number][] = [];
-    for (let x = -24; x <= 24; x += 6) for (let z = -24; z <= 24; z += 6) gridPts.push([x, z]);
+    for (let x = -42; x <= 42; x += 6) for (let z = -42; z <= 42; z += 6) gridPts.push([x, z]);
     // extra ground points at doors / interesting spots
-    gridPts.push([-15, -1.5], [-15, -6], [17, 1.5], [17, -3], [12, -3], [17, -8], [13, -22], [-9, -1], [-4, -1], [3, 3], [-2, 3], [-13, 10], [-8, 6], [5, 10], [-18, 20], [20, 12], [10, 20], [-2, 18], [-7, 19], [-21, -15.2], [-16, -15], [-26, -15], [16, -19], [25, -19], [20, -8.5], [3, 20], [19, 5], [9, -9], [-10, -10], [22.7, 1], [-6, -21]);
+    gridPts.push([-15, -1.5], [-15, -6], [17, 1.5], [17, -3], [12, -3], [17, -8], [13, -22], [-9, -1], [-4, -1], [3, 3], [-2, 3], [-13, 10], [-8, 6], [5, 10], [-18, 20], [20, 12], [10, 20], [-2, 18], [-7, 19], [-21, -15.2], [-16, -15], [-26, -15], [16, -19], [25, -19], [20, -8.5], [3, 20], [19, 5], [9, -9], [-10, -10], [22.7, 1], [-6, -21],
+      [38, 12], [36, 16], [40, 10], [-22, 41], [22, 41], [-22, 35], [22, 35], [-38, 26], [-38, 20], [-38, 32], [-41, -6], [-36, -14], [-36, 2], [-14, -35], [-1, -38], [9, -33], [26, -36], [39, -17], [0, 40], [8, 44], [-8, 44], [33, 6], [-33, -20], [30, -30], [-30, 30], [45, 24], [-45, -34]);
     const ground: number[] = [];
     for (const [x, z] of gridPts) {
       // check free (raycast down from 6m, must hit near ground level and have headroom)
@@ -641,10 +797,19 @@ export class RustMap {
     const pipeTop = add(0.4, 3.4, 6.5), pipeTop2 = add(-4, 3.4, 6.5), pipeTop3 = add(4.5, 3.4, 6.5), pipeUpB = add(-9.6, 1.5, 6.5), pipeUpB2 = add(-12, 1.45, 6.5), pipeDnB = add(10.4, 1.5, 6.5), pipeDnB2 = add(13, 1.45, 6.5);
     const walkway = add(-4.5, 2.78, 4.4);
     const redCont = add(-7.2, 0.15, -1), redContTop = add(-7.2, 2.72, -1), crateNearTower = add(-5.2, 3.6, -1);
+    // outer ring nodes
+    const nGreenTop = add(9, 2.72, -36), nGreenTop2 = add(13, 2.72, -36), nRampB = add(17.5, 0.1, -36), nRampM = add(15.5, 1.3, -36);
+    const nBlueTop = add(-14, 2.72, -38), nRedTop = add(-15.5, 5.32, -40.6);
+    const wtTop = add(26, 4.84, -41), wtStairB = add(26, 0.2, -32.5), wtStairM = add(26, 2.5, -36.5);
+    const garRoof = add(38, 4.4, 14), garRoof2 = add(35, 4.4, 12), garLadB = add(38, 0.3, 19), garIn = add(37, 0.3, 13);
+    const tankA = add(-41, 5.8, -14), tankB = add(-41, 5.8, 2), walkMid = add(-41, 5.8, -6), tankLadB = add(-36.8, 0.35, -14);
+    const hangIn = add(-38, 0.4, 26), hangIn2 = add(-38, 0.4, 22), hangIn3 = add(-38, 0.4, 30);
+    const pbW = add(-22, 0.3, 38), pbE = add(22, 0.3, 38);
     const wps: Waypoint[] = W.map((p, i) => ({ id: i, pos: new THREE.Vector3(p[0], p[1], p[2]), links: [] }));
     const link = (a: number, b: number, ladder?: number) => { if (!wps[a].links.includes(b)) wps[a].links.push(b); if (!wps[b].links.includes(a)) wps[b].links.push(a); if (ladder !== undefined) { wps[a].ladder = ladder; wps[b].ladder = ladder; } };
     // auto-link ground & flat nodes by LOS + slope
-    const flatNodes = [...ground, blueTop, blueTop2, redTop, greenTop, greenTop2, bunkerRoof, bunkerRoof2, bunkerIn, bunkerIn2, shedIn, shedIn2, tankTop, tankTop2, pipeTop, pipeTop2, pipeTop3, t1, t1b, t1s, t2, t2s, t2l, top, topL, walkway, redCont, redContTop, crateNearTower, ramp1b, ramp2b, bStairB, stairBottom, tankLadderB, pipeUpB2, pipeDnB2];
+    const flatNodes = [...ground, blueTop, blueTop2, redTop, greenTop, greenTop2, bunkerRoof, bunkerRoof2, bunkerIn, bunkerIn2, shedIn, shedIn2, tankTop, tankTop2, pipeTop, pipeTop2, pipeTop3, t1, t1b, t1s, t2, t2s, t2l, top, topL, walkway, redCont, redContTop, crateNearTower, ramp1b, ramp2b, bStairB, stairBottom, tankLadderB, pipeUpB2, pipeDnB2,
+      nGreenTop, nGreenTop2, nRampB, nBlueTop, nRedTop, wtTop, wtStairB, garRoof, garRoof2, garLadB, garIn, tankA, tankB, walkMid, tankLadB, hangIn, hangIn2, hangIn3, pbW, pbE];
     for (let i = 0; i < flatNodes.length; i++) for (let j = i + 1; j < flatNodes.length; j++) {
       const A = wps[flatNodes[i]].pos, Bp = wps[flatNodes[j]].pos; const dxz = Math.hypot(A.x - Bp.x, A.z - Bp.z); const dy = Math.abs(A.y - Bp.y);
       if (dxz > 8.6 || dy > 0.55) continue;
@@ -664,6 +829,12 @@ export class RustMap {
     link(tankLadderB, tankTop2, 1); // ladder id 1: oil tank
     link(pipeUpB2, pipeUpB); link(pipeUpB, pipeTop2); link(pipeDnB2, pipeDnB); link(pipeDnB, pipeTop3);
     link(walkway, pipeTop2); link(redContTop, crateNearTower); link(crateNearTower, t1);
+    // outer ring explicit links
+    link(nRampB, nRampM); link(nRampM, nGreenTop2); link(nBlueTop, nRedTop);
+    link(wtStairB, wtStairM); link(wtStairM, wtTop);
+    link(garLadB, garRoof, 2); // ladder id 2: garage roof
+    link(tankLadB, tankA, 3);  // ladder id 3: twin tanks
+    link(tankA, walkMid); link(walkMid, tankB);
     // ensure the red container (near tower) is reachable: ground node near its open end
     this.waypoints = wps;
     // drop isolated nodes' links check (keep all; pathfinding handles)

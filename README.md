@@ -2,9 +2,10 @@
 
 A browser-based, Call of Duty–style first-person shooter set on a faithful recreation of the classic **Rust** map: the oil derrick tower, shipping containers, pump-house bunker, oil tank, the big pipe, ladders, stairs and a desert horizon lit by a real HDRI sky.
 
-- **Mode:** Free-For-All against 3 AI operators (GHOST, ROACH, SOAP). Score limit is adjustable from 1 to 30 kills (default 10) or best score after 10 minutes. Three difficulty presets (Recruit / Regular / Veteran). The match ends with a **Final Killcam** replay of the winning kill from the killer's eyes (Enter to skip).
+- **Mode:** 8-player Free-For-All against 7 AI operators (GHOST, ROACH, SOAP, PRICE, MEAT, ROYCE, OZONE) on an extended ~96 m Rust arena: the classic core plus a north container yard and watchtower, an east pump station and garage, a south trench line and truck depot, and west twin tanks with a top walkway and a hangar. Score limit is adjustable from 1 to 30 kills (default 10) or best score after 10 minutes. Three difficulty presets (Recruit / Regular / Veteran). The match ends with a **Final Killcam** replay of the winning kill from the killer's eyes (Enter to skip).
 - **Killstreaks:** 3 kills = UAV (all enemies on the radar for 30 s, press **3**), 5 kills = Airstrike (press **4**, then click/F to mark the target; five bombs run forward from the mark). Earned streaks survive death until used.
 - **Loadouts (4):** ASSAULT (SCAR-H + Desert Eagle), SNIPER (Intervention + M1911), RUSHER (MP5 + Desert Eagle, 2 frags), OVERKILL (AK-47 + SPAS-12).
+- **Voice:** CoD-style announcer (UAV online, airstrike inbound, double kill, match point, you've taken the lead, victory/defeat…), your operator's callouts (reloading, frag out, tango down) and spatialized enemy chatter, generated through Vercel AI Gateway text-to-speech (`node tools/voice.mjs`, needs `AI_GATEWAY_API_KEY`).
 - **Stack:** Vite + TypeScript + three.js (WebGL 2, PBR, 4K shadow map, SSAO, bloom, SMAA, ACES) + Rapier physics (character controller, ragdoll-free hit zones, rigid-body grenades and shell casings).
 
 ## Run

@@ -35,5 +35,8 @@ This is a fan-made, non-commercial tribute to the Call of Duty: Modern Warfare 2
 - "Fantozzi's Footsteps (Grass/Sand & Stone)" (CC0) — https://opengameart.org/content/fantozzis-footsteps-grasssand-stone
 - All other sounds (hit markers, UI, impacts, explosions, wind) are synthesized at runtime with Web Audio.
 
+## Voice lines
+- Announcer, operator and enemy callouts were generated with OpenAI TTS-1 HD through Vercel AI Gateway (voices onyx, ash, echo, fable) and post-processed with ffmpeg.
+
 ## Fonts
 - Rajdhani, Teko, Oswald — Google Fonts (OFL)

@@ -9,8 +9,10 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@ai-sdk/gateway": "^4.0.72",
     "@gltf-transform/cli": "^4.5.0",
     "@types/three": "^0.185.4",
+    "ai": "^7.0.90",
     "playwright": "^1.62.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"

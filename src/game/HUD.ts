@@ -69,6 +69,8 @@ export class HUD {
     if (html !== this.lastStreakHtml) { this.streaksEl.innerHTML = html; this.lastStreakHtml = html; }
   }
   setAmmoWarn(text: string | null) { if ((this.ammoWarn.textContent || '') !== (text || '')) this.ammoWarn.textContent = text || ''; }
+  targetName = el('target-name'); private lastTarget = '';
+  setTargetName(name: string | null) { const n = name || ''; if (n !== this.lastTarget) { this.lastTarget = n; this.targetName.textContent = n; this.targetName.classList.toggle('show', !!n); } }
   setLethal(n: number) { this.eqLethal.innerHTML = `<b>G</b> FRAG ×${n}`; this.eqLethal.classList.toggle('empty', n <= 0); }
   setTimer(s: number) { this.timer.textContent = fmtTime(s); this.timer.classList.toggle('low', s < 30); this.sbTimer.textContent = fmtTime(s); }
   setScores(me: number, top: number) { this.scoreMe.textContent = me.toString(); this.scoreTop.textContent = top.toString(); }
@@ -97,7 +99,7 @@ export class HUD {
   /** Rotating radar centered on the player. */
   drawMinimap(pPos: THREE.Vector3, yaw: number, blips: RadarBlip[], time: number, uav = false) {
     const ctx = this.mmCtx, W = this.mmCanvas.width, H = this.mmCanvas.height, cx = W / 2, cy = H / 2;
-    const viewRadius = 26; const scale = (W / 2) / viewRadius; // px per meter
+    const viewRadius = 34; const scale = (W / 2) / viewRadius; // px per meter
     ctx.clearRect(0, 0, W, H);
     ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, W / 2 - 2, 0, Math.PI * 2); ctx.clip();
     ctx.fillStyle = '#1a1712'; ctx.fillRect(0, 0, W, H);
