@@ -51,15 +51,15 @@
   </div>
   <div id="lobby" class="screen hidden">
     <div class="lobby-box"><div class="panel-top"><div><div class="eyebrow">INVITE ONLY / ONE LOBBY</div><h2>PRIVATE OPERATIONS</h2></div><button id="lobby-close" class="icon-btn" aria-label="Close lobby">×</button></div>
-      <p class="mission-copy">Bring your squad. Pick your loadout. Own the refinery.</p>
-      <div id="join-fields"><label for="callsign">YOUR CALLSIGN</label><input id="callsign" maxlength="16" autocomplete="nickname" placeholder="OPERATOR"/><label for="invite-code">INVITATION CODE</label><input id="invite-code" type="password" autocomplete="off" placeholder="Paste your code or open an invite link"/><button id="lobby-join" class="btn-primary">JOIN PRIVATE LOBBY <span>↗</span></button><p class="lobby-note">An invitation from the owner is required. Your microphone stays off until you enable it.</p></div>
+      <p class="mission-copy">Open your invite, enter a callsign, and join. No account or password to create.</p>
+      <div id="join-fields"><p id="invite-hint" class="lobby-note"></p><label for="callsign">YOUR CALLSIGN</label><input id="callsign" maxlength="16" autocomplete="nickname" placeholder="OPERATOR"/><label for="invite-code">INVITATION CODE</label><input id="invite-code" type="password" autocomplete="off" placeholder="Paste your code or open an invite link"/><button id="lobby-join" class="btn-primary">JOIN PRIVATE LOBBY <span>↗</span></button><p class="lobby-note">An invitation from the owner is required. Your microphone stays off until you enable it.</p></div>
       <div id="lobby-session" class="hidden"><div class="roster-head"><span id="lobby-count">0 / 8 OPERATORS</span><button id="lobby-invite" class="text-btn">COPY INVITE LINK ↗</button></div><div id="lobby-roster"></div>
         <div id="host-settings" class="lobby-settings"><label>SCORE LIMIT<select id="lobby-limit"><option>10</option><option selected>20</option><option>30</option></select></label><label>BOT FILL<select id="lobby-bots"><option value="0">HUMANS ONLY</option><option value="3">UP TO 3 BOTS</option><option value="7" selected>FILL TO 8</option></select></label></div>
-        <div class="voice-row"><button id="lobby-mic" class="btn-secondary">ENABLE MICROPHONE</button><label><input type="checkbox" id="voice-ptt"/> PUSH TO TALK <b>V</b></label></div><div class="lobby-actions"><button id="lobby-ready" class="btn-secondary">READY UP</button><button id="lobby-start" class="btn-primary">START MATCH</button></div><p class="lobby-note">The first operator hosts the match. Keep that tab open. Voice is optional and is never recorded.</p>
+        <button id="lobby-class" class="btn-secondary">CHOOSE CLASS</button><div class="voice-row"><button id="lobby-mic" class="btn-secondary">ENABLE MICROPHONE</button><label><input type="checkbox" id="voice-ptt"/> PUSH TO TALK <b>V</b></label></div><div class="lobby-actions"><button id="lobby-ready" class="btn-secondary">READY UP</button><button id="lobby-start" class="btn-primary">START MATCH</button><button id="lobby-resume" class="btn-primary hidden">RETURN TO MATCH</button></div><p class="lobby-note">Pick your class → Ready up → The host starts. Joining a match in progress deploys you automatically. Keep the host’s game tab visible. Mic is off until enabled.</p><button id="lobby-leave" class="text-btn">LEAVE LOBBY</button>
       </div><div id="lobby-status" role="status" aria-live="polite"></div>
     </div>
   </div>
-  <div id="online-bar" class="hidden"><span class="live-dot"></span><span id="online-status">PRIVATE LOBBY</span><button id="online-mic">MIC OFF</button><button id="lobby-return">LOBBY</button></div>
+  <div id="online-bar" class="hidden"><span class="live-dot"></span><span id="online-status">PRIVATE LOBBY</span><button id="online-mic">MIC OFF</button><button id="online-class">CLASS [L]</button><button id="lobby-return">LOBBY</button></div>
   <!-- HUD -->
   <div id="hud" class="hidden"><div id="sector-label">REFINERY</div><div id="stance-indicator"><span id="stance-label">STANDING</span><div><i id="stamina-fill"></i></div></div>
     <div id="crosshair"><i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i><i class="dot"></i></div>
@@ -100,7 +100,7 @@
     <div id="killfeed"></div>
 
     <div id="health">
-      <div class="hp-name">RILEY</div>
+      <div id="hp-name" class="hp-name">OPERATOR</div>
       <div class="hp-bar"><div id="hp-fill"></div><div id="hp-lag"></div></div>
       <div id="hp-num" class="mono">100</div>
     </div>
@@ -137,10 +137,15 @@
     <div class="kc-skip mono">ENTER · SKIP</div>
   </div>
 
+  <div id="class-picker" class="screen hidden" role="dialog" aria-modal="true" aria-labelledby="class-title">
+    <div class="class-box"><div class="panel-top"><div><div class="eyebrow">YOUR OPERATOR</div><h2 id="class-title">CHOOSE CLASS</h2></div><button id="class-close" class="icon-btn" aria-label="Close class picker">×</button></div>
+      <p id="class-note" class="lobby-note"></p><div id="class-options"></div><p id="class-status" role="status" aria-live="polite"></p><button id="class-done" class="btn-primary">RETURN TO MATCH</button>
+    </div>
+  </div>
   <!-- PAUSE -->
   <div id="pause" class="screen hidden">
     <div class="pause-box">
-      <div class="eyebrow">PAUSED</div>
+      <div id="pause-note" class="eyebrow">PAUSED</div>
       <div class="big-title sm" data-map-name>SABLE REACH</div>
       <button id="btn-resume" class="btn-primary">RESUME</button>
       <button id="btn-loadout" class="btn-secondary">CHANGE LOADOUT</button>

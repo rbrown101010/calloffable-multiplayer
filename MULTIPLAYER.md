@@ -8,6 +8,14 @@ Invite URLs use a fragment (`#invite=…`), which is removed from the address ba
 
 No room list or public matchmaking exists. Maximum occupancy is eight humans. AI fill is reduced as people join. Matches are free-for-all on Sable Reach, with shared countdown, score limit, timer, scoreboard, deaths, respawns, and rematches. Late arrivals receive the host snapshot. Leaving the room transfers hosting to the next player.
 
+## Class changes and session flow
+
+An invite opens the callsign form directly. No email/password signup is needed. The lobby contains the class picker, ready button, invite copy, optional microphone and an explicit Leave lobby control. In an active match, closing the lobby resumes the game; it never disconnects the player.
+
+Class selection queues equipment for the next life. Only the host grants respawns. Every player pose and spawn grant carries a life number and equipped class; a guest applies each life once, so a repeated grant or world snapshot cannot refill ammo or revert equipment. The host checks shots against that life's class, independently of the next class selected in presence. Weapons are cloned from templates preloaded at boot and both slots reset atomically on respawn.
+
+World snapshots carry a monotonic sequence; recovery snapshots from presence cannot replace newer live state. Guest movement goes to the host and every other avatar is rendered from the host's snapshots, avoiding competing movement streams. Bot visibility and hitboxes follow the same authoritative roster through respawns and late joins. Protocol v2 uses a room suffix so old open tabs cannot mix incompatible spawn messages with the updated build. Everyone should refresh after this update; invite links remain the same.
+
 ## Authority and operating limits
 
 InstantDB carries presence and ephemeral realtime messages. The elected browser runs AI, damage, scoring, health regeneration, respawns, grenades, and match completion. Clients send their locally controlled poses and shot events. The host checks shot sequence, cadence, equipped weapon, pellet count, distance, and world line of sight before applying reported hits.

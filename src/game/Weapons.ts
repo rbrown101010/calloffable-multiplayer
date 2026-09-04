@@ -16,15 +16,18 @@ export const VIEW_LAYER = 1;
 // ------------------------------------------------------------- model loading
 const gltfLoader = new GLTFLoader(); gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 const modelCache = new Map<string, Promise<THREE.Object3D>>();
+const loadedModels = new Map<string, THREE.Object3D>();
 export function loadWeaponModel(def: WeaponDef): Promise<THREE.Object3D> {
   const url = def.model.url;
   if (!modelCache.has(url)) {
     const p: Promise<THREE.Object3D> = url.startsWith('proc:')
       ? Promise.resolve(url === 'proc:intervention' ? buildIntervention() : new THREE.Group())
       : new Promise((res, rej) => gltfLoader.load(url, (g) => res(g.scene), undefined, (e) => rej(e)));
-    modelCache.set(url, p.catch((e) => { console.warn('weapon model failed', url, e); return placeholderGun(); }));
+    modelCache.set(url, p.catch((e) => { console.warn('weapon model failed', url, e); return placeholderGun(); }).then(m => { loadedModels.set(url, m); return m; }));
   }
-  return modelCache.get(url)!.then((m) => {
+  return modelCache.get(url)!.then(m => cloneWeaponModel(def, m));
+}
+function cloneWeaponModel(def: WeaponDef, m: THREE.Object3D) {
     const c = skClone(m);
     if (def.id === 'spas12') {
       // the low-poly SPAS-12 ships without textures: give it a proper blued-steel / polymer look
@@ -34,7 +37,6 @@ export function loadWeaponModel(def: WeaponDef): Promise<THREE.Object3D> {
     }
     c.traverse((o: any) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach((mt: any) => { if (mt && 'envMapIntensity' in mt) mt.envMapIntensity = 1.0; }); } });
     return c;
-  });
 }
 /** Shift a parent-less model so its bounding box center sits on its parent origin. */
 export function centerModel(model: THREE.Object3D, outMin?: THREE.Vector3, outMax?: THREE.Vector3) {
@@ -205,6 +207,7 @@ export class Bullets {
       if (b.traveled > b.range || b.pos.y < -30) this.kill(i);
     }
   }
+  clear() { while(this.list.length)this.kill(this.list.length-1); }
   private kill(i: number) { const b = this.list[i]; if (b.tracer) this.scene.remove(b.tracer); this.list.splice(i, 1); }
 }
 
@@ -236,13 +239,17 @@ export class Gunplay {
   get def() { return this.slot?.def; }
   get busy() { return this.reloading || this.bolting || this.holstering || this.drawing || this.cooking || this.throwing; }
 
-  async setLoadout(l: Loadout) {
-    this.ready = false;
+  setLoadout(l: Loadout) {
+    // Boot preloads every weapon. Equip atomically so a late promise cannot replace a newer life.
     const defs = [WEAPONS[l.primary], WEAPONS[l.secondary]];
-    const models = await Promise.all(defs.map((d) => loadWeaponModel(d)));
+    const models = defs.map(d => cloneWeaponModel(d, loadedModels.get(d.model.url)!));
+    this.ready = false;
     this.slots = defs.map((d, i) => ({ def: d, mag: d.mag, reserve: d.reserve, model: models[i] }));
     this.lethals = l.lethal; this.cur = 0; this.pending = -1;
     this.reloading = false; this.bolting = false; this.holstering = false; this.cooking = false; this.throwing = false; this.bloom = 0; this.fireTimer = 0;
+    this.adsHeld = this.adsLatched = this.triggerWasDown = this.firing = false;
+    this.reloadT = this.boltT = this.holsterT = this.cookT = this.throwT = 0;
+    this.grenadeSpawned = this.magDone = false;
     this.vm.setWeapon(this.slots[0].def, this.slots[0].model!); this.drawing = true; this.drawT = 0;
     this.ready = true; this.emit({ type: 'switch', def: this.slots[0].def }); this.emit({ type: 'ammo' });
   }
@@ -265,8 +272,8 @@ export class Gunplay {
     if(!d)return;
     const alive=p.alive && canControl && !this.holstering;
     const adsBtn = inp.btn(2) || inp.down('AltLeft') || inp.down('AltRight');
-    if (inp.hit('KeyE')) this.adsLatched = !this.adsLatched; // E always toggles aim
-    if (this.adsToggle) { if (inp.btnHit(2) || inp.hit('AltLeft') || inp.hit('AltRight')) this.adsLatched = !this.adsLatched; }
+    if (alive && inp.hit('KeyE')) this.adsLatched = !this.adsLatched; // E always toggles aim
+    if (alive && this.adsToggle) { if (inp.btnHit(2) || inp.hit('AltLeft') || inp.hit('AltRight')) this.adsLatched = !this.adsLatched; }
     const adsIn = this.adsToggle ? this.adsLatched : (adsBtn || this.adsLatched);
     const adsBlocked = !alive || this.reloading || this.cooking || this.throwing || p.sprinting || !!p.climbing || (this.bolting && d.mode === 'bolt');
     if (adsBlocked && this.adsToggle && (this.reloading || this.cooking || this.throwing || !alive)) this.adsLatched = false;

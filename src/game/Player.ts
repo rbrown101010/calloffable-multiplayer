@@ -25,6 +25,7 @@ export class Player {
   rig = new THREE.Object3D();
   camera: THREE.PerspectiveCamera;
   mounted = false;
+  loadoutIdx = 0; life = 0;
   grounded = false; wasGrounded = false; groundedTime = 0;
   sprinting = false; crouching = false; sliding = false; slideT = 0; slideDir = new THREE.Vector3();
   ads = 0; adsBlend = 0;
@@ -77,6 +78,7 @@ export class Player {
   get moving() { return this.speed > 0.3; }
 
   spawn(p: THREE.Vector3, yaw: number) {
+    this.adsBlend = 0; this.sprinting = false; this.speed = 0; this.stamina = 1; this.breathHold = 0;
     this.crouching = false; this.sliding = false; this.collider.setHalfHeight(CAP_HH_STAND);
     this.pos.set(p.x, p.y + CAP_HH_STAND + CAP_R + 0.05, p.z); this.vel.set(0, 0, 0);
     this.body.setNextKinematicTranslation(this.pos); this.body.setTranslation(this.pos, true);

@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
 const base=process.env.TEST_URL||'http://127.0.0.1:5178';
 const browser=await chromium.launch({channel:'chrome',headless:true,args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream','--autoplay-policy=no-user-gesture-required']});
-const errors=[];const clients=[];
+const errors=[];const clients=[];const testRoom='test-'+crypto.randomUUID();
 try{
  const denied=await fetch(base+'/api/lobby',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:'wrong',name:'TEST'})});assert.equal(denied.status,403);console.log('PASS unauthenticated lobby join denied');
  for(const [name,key]of [['TEST ALPHA',process.env.LOBBY_HOST_KEY],['TEST BRAVO',process.env.LOBBY_INVITE_KEY]]){
   const context=await browser.newContext({viewport:{width:1280,height:800},permissions:['microphone']});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/api/lobby',async route=>{const response=await route.fetch();const data=await response.json();if(response.ok())data.roomId+='-'+testRoom;await route.fulfill({response,json:data});});
   await page.goto(base+'/?nolock&noao');await page.waitForFunction(()=>window.__game?.state==='menu',undefined,{timeout:60000});
   await page.getByRole('button',{name:'PRIVATE MULTIPLAYER'}).click();await page.locator('#callsign').fill(name);await page.locator('#invite-code').fill(key);await page.locator('#lobby-join').click();
   await page.waitForFunction(()=>window.__game.online.connected&&window.__game.online.peers.size>0,undefined,{timeout:20000});clients.push({context,page});

@@ -7,7 +7,9 @@ A browser FPS with a 240 × 240 m desert refinery, ten loadouts, seven tactical 
 ## Play
 
 - **Deploy solo:** choose Sable Reach or the original Rust map, a loadout, difficulty, and score limit.
-- **Private multiplayer:** open an invite link, enter a callsign, and join. Ready up; the first player hosts and starts the match. Bot fill keeps empty slots active.
+- **Private multiplayer:** open an invite link, enter a callsign, and join. Choose your class inside the lobby, then ready up; the first player hosts and starts the match. Bot fill keeps empty slots active.
+- **Change class in a match:** press **L** or use **Escape → Change Loadout**. The selected class equips on your next respawn, with both weapons, full ammo and grenades. Your lobby, score and match stay intact.
+- **Return or leave:** closing the lobby during a match returns to the game. Only **Leave lobby** disconnects you. Multiplayer continues while menus are open.
 - **Voice:** microphone off by default. Enable it in the lobby or pause overlay. Optional push-to-talk uses **V**. Click a player's mic indicator to mute them locally.
 - The lobby owner can copy the invite link. Share that link only with the people you want in the session.
 
@@ -22,7 +24,7 @@ Operators flank, hold angles, rush, change ranges, crouch under pressure, retrea
 - A two-floor relay station with a roof, a 64 m upper catwalk, freight overlook, drive-through overpass, five ramps, culvert shelters, 6.5 m and 4.8 m ridges, and a 3.4 m excavated quarry. New navigation links let AI reach upper routes.
 - Four medical stations, four ammunition stations, and three reusable jump pads. Supplies respawn after 22 seconds and use shared cooldowns in multiplayer.
 - ADS camera and weapon idle drift removed; raw mouse deltas, pointer recapture, FOV-matched sensitivity, and a separate ADS sensitivity slider. Recoil springs use small simulation steps to stay stable during a slow frame.
-- Auto graphics caps the internal pixel count and adapts resolution when frames slow down. Shadows use 2048 px at 30 Hz, minimap refresh is 10 Hz, and killcam recording is 20 Hz. Vehicle parts are batched; wrist/leg rig lookups reuse cached data. Full-resolution rendering remains an option under Escape > Graphics.
+- Auto graphics caps the internal pixel count and adapts resolution when frames slow down. Shadows use 2048 px at 30 Hz, minimap refresh is 10 Hz, and solo killcam recording is 20 Hz (disabled in multiplayer). Vehicle parts are batched; wrist/leg rig lookups reuse cached data. Full-resolution rendering remains an option under Escape > Graphics.
 
 ## Loadouts
 
@@ -58,6 +60,7 @@ Operators flank, hold angles, rush, change ranges, crouch under pressure, retrea
 | G | Cook and throw frag |
 | 3 / 4 | UAV / airstrike when earned |
 | V | Push-to-talk, when selected |
+| L | Choose class for your next respawn |
 | Tab | Scoreboard |
 | Esc | Pause / settings / multiplayer controls |
 
@@ -108,3 +111,9 @@ The multiplayer check uses two isolated Chrome contexts with fake microphone aud
 `tools/puppet-preview.html` is a local inspection stage. Operator verification checks both hands against each weapon grip in standing/crouched and raised/lowered aim poses. Debug URL flags include `?noao`, `?botfreeze`, `?passive`, `?ghost`, and `?nolock` for local inspection.
 
 Code is MIT. Third-party assets retain their individual licenses. The retained Rust map is a fan tribute; Call of Duty and Rust are trademarks of Activision.
+
+## Multiplayer verification
+
+`npm run test:multiplayer-flow` checks fresh invitation entry, all ten classes, active versus queued equipment, duplicate spawn protection, guest shooting, death during class selection, visible bots and humans, late joining, rematches and host transfer across three browser contexts. `node --env-file=.env.local tools/verify-lobby-capacity.mjs` checks eight actual game clients and rejects a ninth.
+
+`npm run test:online` exercises live bullets, score, respawn, driving and two-way voice. Multiplayer browser tests use an isolated ephemeral room suffix, so they do not join the players' lobby. Set `TEST_URL` to verify the deployed build.

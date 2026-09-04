@@ -18,6 +18,7 @@ export const DEBUG = { freeze: new URLSearchParams(location.search).has('botfree
 
 export class Bot {
   role: 'flanker' | 'anchor' | 'rusher' | 'marksman' = 'flanker'; stance = false; now = 0; tacticT = 0;
+  life = 0; loadoutIdx = 0;
   id: number; name: string; loadout: Loadout; def: WeaponDef; mag: number; reserve: number; skill: number;
   body: RAPIER.RigidBody; collider: RAPIER.Collider; cc: RAPIER.KinematicCharacterController; hitHead: RAPIER.Collider; hitBody: RAPIER.Collider; hitLegs: RAPIER.Collider;
   pos = new THREE.Vector3(); vel = new THREE.Vector3(); yaw = 0; aimYaw = 0; aimPitch = 0; grounded = false;
@@ -95,8 +96,8 @@ export class Bot {
     const P = this.puppet; if (!P) return;
     if (!this.alive) {
       this.deathT += dt;
+      if (this.deathT > 3.5) { P.setVisible(false); return; }
       P.update(dt, { pos: this.pos, feetY: this.feetY, yaw: this.yaw, aimYaw: this.aimYaw, aimPitch: this.aimPitch, speed: 0, alive: false, deathT: this.deathT, deathDir: this.deathDir });
-      if (this.deathT > 3.5) P.setVisible(false);
       return;
     }
     const sp = Math.hypot(this.vel.x, this.vel.z);

@@ -4,8 +4,8 @@ import {mkdir} from 'node:fs/promises';
 
 const base=process.env.TEST_URL||'http://127.0.0.1:5180';
 const browser=await chromium.launch({channel:'chrome',headless:true});
-const errors=[],contexts=[];
-const open=async()=>{const context=await browser.newContext({viewport:{width:1280,height:800}});contexts.push(context);const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/?nolock&noao');await page.waitForFunction(()=>window.__game?.state==='menu',undefined,{timeout:90000});return page;};
+const errors=[],contexts=[];const testRoom='roadkill-'+crypto.randomUUID();
+const open=async()=>{const context=await browser.newContext({viewport:{width:1280,height:800}});contexts.push(context);const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.route('**/api/lobby',async route=>{const response=await route.fetch();const data=await response.json();if(response.ok())data.roomId+='-'+testRoom;await route.fulfill({response,json:data});});await page.goto(base+'/?nolock&noao');await page.waitForFunction(()=>window.__game?.state==='menu',undefined,{timeout:90000});return page;};
 const stop=async p=>{await p.keyboard.up('w');await p.keyboard.up('Shift');await p.keyboard.down('Space');await p.waitForTimeout(900);await p.keyboard.up('Space');};
 const soloFixture=async(page,speed,targets)=>page.evaluate(({speed,targets})=>{
   const g=window.__game;g.bots.frozen=true;g.bullets.list.length=0;

@@ -23,6 +23,8 @@ export class Grenades {
     this.list.push({ body, mesh, fuse, owner, lastSpeed: vel.length(), age: 0 });
   }
 
+  clear() { for(const g of this.list){this.physics.world.removeRigidBody(g.body);this.scene.remove(g.mesh);}this.list=[]; }
+
   update(dt: number, victims: () => GrenadeVictim[]) {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const g = this.list[i]; g.fuse -= dt; g.age += dt;

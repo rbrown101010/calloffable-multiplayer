@@ -49,6 +49,7 @@ export class Game {
   params = new URLSearchParams(location.search);
   nolock = this.params.has('nolock'); god = this.params.has('god');
   menuAngle = 1.05;
+  private classReturnToLobby = false;
   private shadowTimer = 0; private adaptiveTime = 0; private adaptiveFrames = 0; private resolutionCooldown = 0; private snapTimer = 0; private minimapTimer = 0;
   private _v = new THREE.Vector3(); private _v2 = new THREE.Vector3();
 
@@ -171,11 +172,20 @@ export class Game {
       d.addEventListener('mouseenter', () => this.audio.uiHover());
       list.appendChild(d);
     });
-    this.renderLoadoutDetail();
+    for (const [i, lo] of LOADOUTS.entries()) {
+      const button = document.createElement('button'); button.className = 'lo'; button.dataset.classIndex = String(i);
+      button.innerHTML = `<div class="lo-num">${String(i+1).padStart(2,'0')}</div><div><div class="lo-name">${lo.name}</div><div class="lo-desc">${WEAPONS[lo.primary].name} + ${WEAPONS[lo.secondary].name}</div></div><div class="lo-tag">${lo.tag}</div>`;
+      button.onclick = () => { this.selectLoadout(i); this.audio.uiClick(); }; el('class-options').append(button);
+    }
+    el('class-done').onclick = () => this.closeClassPicker();
+    el('class-close').onclick = () => this.closeClassPicker();
+    el('lobby-class').onclick = () => this.openClassPicker();
+    el('online-class').onclick = () => this.openClassPicker();
+    this.renderLoadoutDetail(); this.updateClassUI();
     el('btn-deploy').addEventListener('click', () => {if(this.online?.connected)this.online.leave();void this.startMatch();});
     el('btn-resume').addEventListener('click', () => this.resume());
-    el('btn-loadout').addEventListener('click', () => { this.endMatch(true); });
-    el('btn-quit').addEventListener('click', () => this.endMatch(false, true));
+    el('btn-loadout').addEventListener('click', () => this.openClassPicker());
+    el('btn-quit').addEventListener('click', () => { if(this.online?.connected)this.online.leave(); else this.endMatch(false, true); });
     el('btn-again').addEventListener('click', () => {if(this.online?.connected){el('lobby').classList.remove('hidden');}else this.showMenu();});
     const bind = (id: string, key: 'sens' | 'adsSens' | 'fov' | 'vol' | 'scale' | 'wind', fmt: (v: number) => string, apply: (v: number) => void) => {
       const inp = el<HTMLInputElement>(id), out = el(id + '-v'); inp.value = String(this.settings[key]); out.textContent = fmt(this.settings[key]);
@@ -210,17 +220,39 @@ export class Game {
     document.querySelectorAll<HTMLElement>('[data-diff]').forEach((b) => b.addEventListener('click', () => { this.settings.difficulty = b.dataset.diff as any; applyDiff(); this.saveSettings(); this.audio.uiClick(); }));
     applyDiff();
     window.addEventListener('keydown', (e) => {
-      if ((e.target as HTMLElement)?.matches('input,textarea,select') || !el('lobby').classList.contains('hidden'))return;
+      if ((e.target as HTMLElement)?.matches('input,textarea,select'))return;
+      if (!el('class-picker').classList.contains('hidden')) { if(e.code==='Escape'||e.code==='Enter')this.closeClassPicker(); else if(/^Digit[0-9]$/.test(e.code))this.selectLoadout((parseInt(e.code[5])+9)%10); return; }
+      if (!el('lobby').classList.contains('hidden'))return;
+      if(e.code==='KeyL'&&(this.state==='playing'||this.state==='paused')){this.openClassPicker();return;}
       if (this.state === 'menu') { if (e.code === 'Enter') this.startMatch(); if (/^Digit[0-9]$/.test(e.code)) this.selectLoadout((parseInt(e.code[5]) + 9) % 10); }
       else if (this.state === 'paused' && e.code === 'Enter') this.resume();
-      else if (this.state === 'ended' && e.code === 'Enter') this.showMenu();
+      else if (this.state === 'ended' && e.code === 'Enter') { if(this.online?.connected)el('lobby').classList.remove('hidden');else this.showMenu(); }
     });
     el('capture-pointer').onclick=()=>this.input.lock();
     this.renderer.domElement.addEventListener('mousedown',()=>{if(this.state==='playing'&&!this.nolock&&!this.input.locked)this.input.lock();});
     this.input.onLockChange = (locked) => { if (!locked && this.state === 'playing' && !this.nolock) this.pause(); };
     window.addEventListener('mousedown', () => { this.audio.unlock(); });
   }
-  private selectLoadout(i: number) { this.loadoutIdx = i; document.querySelectorAll('#loadouts .lo').forEach((e, k) => e.classList.toggle('sel', k === i)); this.renderLoadoutDetail(); this.online?.publishPresence(); }
+  private selectLoadout(i: number) { if(!Number.isInteger(i)||!LOADOUTS[i])return; this.loadoutIdx = i; document.querySelectorAll('#loadouts .lo').forEach((e, k) => e.classList.toggle('sel', k === i)); this.renderLoadoutDetail(); this.updateClassUI(); this.online?.selectClass(i); }
+  openClassPicker() {
+    this.classReturnToLobby = !el('lobby').classList.contains('hidden');
+    if(this.state==='playing')this.pause();
+    this.input.unlock();this.input.reset();
+    el('pause').classList.add('hidden');el('class-picker').classList.remove('hidden');this.updateClassUI();
+  }
+  closeClassPicker() {
+    el('class-picker').classList.add('hidden');this.input.reset();
+    if(!this.classReturnToLobby)this.resume();
+  }
+  updateClassUI() {
+    const active=this.state==='playing'||this.state==='paused';
+    const current=LOADOUTS[this.player?.loadoutIdx||0], next=LOADOUTS[this.loadoutIdx];
+    el('class-status').textContent=active ? `CURRENT: ${current.name} · NEXT SPAWN: ${next.name}` : `SELECTED: ${next.name}`;
+    el('class-note').textContent=active ? 'Your new class equips automatically on your next respawn. You stay in this match and keep your score. The match continues while this menu is open.' : 'Choose a class, return to the lobby, then ready up. Both weapons and grenades are included.';
+    el('class-done').textContent=this.classReturnToLobby?'BACK TO LOBBY':active?'RETURN TO MATCH':'DONE';
+    document.querySelectorAll<HTMLElement>('[data-class-index]').forEach(b=>{const selected=Number(b.dataset.classIndex)===this.loadoutIdx;b.classList.toggle('sel',selected);b.setAttribute('aria-pressed',String(selected));});
+    el('lobby-class').textContent='CLASS · '+next.name+' · CHANGE';
+  }
   private renderLoadoutDetail() {
     const lo = LOADOUTS[this.loadoutIdx]; const p = WEAPONS[lo.primary], s = WEAPONS[lo.secondary];
     const bar = (label: string, v: number) => `<div class="stat"><span>${label}</span><i><b style="width:${Math.round(clamp(v, 0.05, 1) * 100)}%"></b></i><span>${Math.round(clamp(v, 0, 1) * 100)}</span></div>`;
@@ -235,9 +267,10 @@ export class Game {
 
   showMenu() {
     this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
+    el('class-picker').classList.add('hidden');this.input.reset();this.audio.setWind(0);this.bullets.clear();this.grenades.clear();
     this.state = 'menu'; el('menu').classList.remove('hidden'); el('pause').classList.add('hidden'); el('end').classList.add('hidden'); this.hud.hide();
     this.vm.root.visible = false; this.input.unlock(); this.kc = null; this.hud.hideKillcam(); this.playerPuppet?.setShadowOnly(true);
-    for (const b of this.bots.bots) { if (b.alive) b.die(); if (b.model) b.model.visible = false; b.respawnT = 1e9; }
+    for (const b of this.bots.bots) { if (b.alive) b.die(); b.puppet?.setVisible(false); b.respawnT = 1e9; }
   }
 
   // ------------------------------------------------------------------ match flow
@@ -246,26 +279,26 @@ export class Game {
     if(!this.nolock)this.input.lock();
     this.audio.unlock(); this.audio.startWind(); this.audio.setWind(this.settings.wind);
     el('menu').classList.add('hidden'); el('end').classList.add('hidden'); el('pause').classList.add('hidden');
-    this.vehicles.reset();this.fieldItems.reset();
+    this.bullets.clear();this.grenades.clear();this.vehicles.reset();this.fieldItems.reset();
     this.match.timeLeft = MATCH_TIME; this.match.over = false; this.bestStreak = 0;
     const P = this.player; P.kills = 0; P.deaths = 0; P.score = 0; P.streak = 0;
     for (const b of this.bots.bots) { b.kills = 0; b.deaths = 0; b.score = 0; b.streak = 0; b.respawnT = 0; }
-    await this.gunplay.setLoadout(LOADOUTS[this.loadoutIdx]);
+    this.player.life = 0;
     if(!this.online?.connected || this.online.isHost)this.bots.spawnAll();
     else for(const b of this.bots.bots){b.alive=false;for(const c of [b.collider,b.hitHead,b.hitBody,b.hitLegs])c.setEnabled(false);b.puppet?.setVisible(false);}
     (this.player as any).nades=LOADOUTS[this.loadoutIdx].lethal;
-    for (const b of this.bots.bots) if (b.model) b.model.visible = true;
-    this.respawnPlayer(true);
+    this.respawnPlayer(true, this.loadoutIdx, this.online?.connected&&!this.online.isHost?0:1);
     this.hud.show(); this.hud.setLethal(this.gunplay.lethals); this.hud.setTimer(this.match.timeLeft); this.hud.setScores(0, 0);
     this.uavReady = false; this.airReady = false; this.uavUntil = -1; this.airTargeting = false; this.gunplay.blockFire = false; this.warn60 = this.warn30 = this.matchPointShown = false;
     this.countdown = 3.999; this.countdownShown = 9; this.bots.frozen = true;
     this.snaps = []; this.shotLog = []; this.lastKill = null; this.kc = null; this.snapIdx = 0; this.playerPuppet?.setShadowOnly(true); this.killTimes = []; this.wasLeader = false; this.uavAnnounced = false;
     this.hud.centerMsg(`FIRST TO ${this.settings.scoreLimit} KILL${this.settings.scoreLimit > 1 ? 'S' : ''} WINS`);
+    el('hp-name').textContent=this.player.name;
     this.state = 'playing'; if (!this.nolock) this.input.lock();
     this.hud.centerMsg('FREE-FOR-ALL', undefined, '');
   }
-  private pause() { if (this.state !== 'playing') return; this.state = 'paused'; this.vehicles.silence(); el('pause').classList.remove('hidden'); this.hud.showScoreboard(false); }
-  resume() { if (this.state !== 'paused') return; el('pause').classList.add('hidden'); this.state = 'playing'; if (!this.nolock) this.input.lock(); }
+  private pause() { if (this.state !== 'playing') return; this.state = 'paused'; this.input.reset(); el('pause-note').textContent=this.online?.connected?'MATCH MENU · Multiplayer continues':'PAUSED'; el('btn-quit').textContent=this.online?.connected?'LEAVE LOBBY':'END MATCH'; this.vehicles.silence(); el('pause').classList.remove('hidden'); this.hud.showScoreboard(false); }
+  resume() { if (this.state !== 'paused') return; el('pause').classList.add('hidden');el('class-picker').classList.add('hidden');this.input.reset(); this.state = 'playing'; if (!this.nolock) this.input.lock(); }
   private endMatch(toMenu = false, skipKillcam = false) {
     if (toMenu) { this.showMenu(); return; }
     if (this.state === 'killcam' || this.state === 'ended') return;
@@ -275,6 +308,7 @@ export class Game {
   }
   showEndScreen() {
     this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
+    el('class-picker').classList.add('hidden');
     this.state = 'ended'; this.input.unlock(); el('pause').classList.add('hidden'); this.hud.showScoreboard(false); this.hud.hideKillcam(); this.vm.root.visible = false;
     const rows = this.scoreRows(); const place = rows.findIndex((r) => r.me) + 1;
     el('end-eyebrow').textContent = 'MATCH OVER · FREE-FOR-ALL · '+this.mapName;
@@ -290,13 +324,13 @@ export class Game {
     for(const b of this.online?.connected?[...this.bots.bots.slice(0,Math.max(0,Math.min(this.online.world.bots,8-this.online.peers.size))),...this.online.remotes.values()]:this.bots.bots) rows.push({ name: b.name, score: b.score, kills: b.kills, deaths: b.deaths, streak: b.streak, me: false });
     return rows.sort((a, b) => b.score - a.score || a.deaths - b.deaths);
   }
-  respawnPlayer(first = false) {
+  respawnPlayer(_first = false, loadout = this.loadoutIdx, life = this.player.life + 1, spawn?: {pos:THREE.Vector3;yaw:number}) {
     this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
-    const s = this.bots.pickSpawn(this.player);
-    this.player.spawn(s.pos, s.yaw);
-    this.gunplay.refill(); this.gunplay.lethals = LOADOUTS[this.loadoutIdx].lethal; this.hud.setLethal(this.gunplay.lethals);
-    if (!first) { this.gunplay.cur = 0; this.vm.setWeapon(this.gunplay.slot.def, this.gunplay.slot.model!); this.gunplay.drawing = true; this.gunplay.drawT = 0; this.onGunEvent({ type: 'switch', def: this.gunplay.slot.def }); }
-    this.vm.root.visible = true; this.hud.hideRespawn(); this.hud.setHealth(100, 100);
+    const index=LOADOUTS[loadout]?loadout:0;
+    const s = spawn || this.bots.pickSpawn(this.player);
+    this.input.reset();this.player.spawn(s.pos, s.yaw);this.player.loadoutIdx=index;this.player.life=life;
+    this.gunplay.setLoadout(LOADOUTS[index]);(this.player as any).nades=LOADOUTS[index].lethal;
+    this.hud.setLethal(this.gunplay.lethals);this.vm.root.visible=true;this.hud.hideRespawn();this.hud.setHealth(100,100);this.updateClassUI();
   }
   private playerDied(attacker: any, weapon: string) {
     this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
@@ -501,7 +535,7 @@ export class Game {
     if (!P.alive) { this.respawnT -= dt; this.hud.setRespawnCount(Math.max(0, this.respawnT)); if (this.respawnT <= 0 && !this.match.over && !this.online?.connected) this.respawnPlayer(); }
     // match-start countdown
     if (this.countdown > 0) {
-      this.countdown -= dt; const n = Math.ceil(this.countdown);
+      this.countdown = this.online?.connected ? Math.max(0,(this.online.world.startAt-Date.now())/1000) : this.countdown-dt; const n = Math.ceil(this.countdown);
       if (n < this.countdownShown) { this.countdownShown = n; if (n >= 1) { this.hud.streak(String(n)); this.audio.countdownBeep(false); } }
       if (this.countdown <= 0) { this.hud.streak('GO'); this.audio.countdownBeep(true); this.bots.frozen = false; this.voice.announce('ffa', 3, 0); }
     }
@@ -522,7 +556,7 @@ export class Game {
     // player body (shadow) + killcam recorder
     if (this.playerPuppet) this.playerPuppet.update(dt, { pos: P.pos, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, speed: P.speed, alive: P.alive, deathT: P.deathT, crouch: P.crouching, riding:P.mounted });
     this.snapTimer+=dt;
-    if (this.countdown <= 0 && this.snapTimer>=.05) {
+    if (!this.online?.connected && this.countdown <= 0 && this.snapTimer>=.05) {
       this.snapTimer=0;
       this.snaps.push({ t: this.time, p: { x: P.pos.x, y: P.pos.y, z: P.pos.z, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, alive: P.alive, speed: P.speed, eyeY: P.rig.position.y, pitch: P.pitch, ads: P.ads }, b: this.bots.bots.map((b) => ({ x: b.pos.x, y: b.pos.y, z: b.pos.z, feetY: b.feetY, yaw: b.yaw, aimYaw: b.aimYaw, aimPitch: b.aimPitch, alive: b.alive, speed: Math.hypot(b.vel.x, b.vel.z) })) });
       while (this.snaps.length && this.snaps[0].t < this.time - 9) this.snaps.shift();
