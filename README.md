@@ -1,6 +1,7 @@
 # RUST — Free-For-All · Multiplayer
 
 > **This is the multiplayer build** of [calloffable-public](https://github.com/rbrown101010/calloffable-public): one password-protected lobby for up to 8 players, empty slots filled by the existing bots, and CoD-style proximity voice chat.
+> **Live build: https://calloffable-multiplayer.vercel.app** (redeploys from `main`; today it is the single-player game, the stable play link is https://calloffable.vercel.app).
 > **Status: design complete, implementation not started.** The full plan, protocol, authority model and milestones are in [MULTIPLAYER.md](MULTIPLAYER.md). Server secrets are listed by name in [.env.example](.env.example).
 >
 > Everything below describes the single-player game this repo starts from. It still runs as-is with `npm run dev`.
