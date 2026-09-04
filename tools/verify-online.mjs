@@ -15,6 +15,14 @@ try{
  const [a,b]=clients.map(c=>c.page);
  await a.waitForFunction(()=>window.__game.online.peers.size===2&&window.__game.online.remotes.size===1,undefined,{timeout:20000});await b.waitForFunction(()=>window.__game.online.peers.size===2&&window.__game.online.remotes.size===1,undefined,{timeout:20000});
  console.log('PASS two independent users joined one InstantDB lobby');
+ // Presence from a just-closed verification run can briefly retain its match snapshot.
+ await a.waitForFunction(()=>window.__game.online.isHost&&!window.__game.online.starting);
+ await b.waitForFunction(()=>!window.__game.online.starting);
+ if(await a.evaluate(()=>window.__game.online.world.phase!=='lobby')){
+  await a.evaluate(()=>window.__game.online.finish());
+  await Promise.all([a,b].map(p=>p.waitForFunction(()=>window.__game.state==='ended')));
+  await Promise.all([a,b].map(p=>p.locator('#btn-again').click()));
+ }
  await a.locator('#lobby-bots').selectOption('0');await a.locator('#lobby-limit').selectOption('10');await b.locator('#lobby-ready').click();await a.waitForFunction(()=>[...window.__game.online.peers.values()].some(p=>p.name==='TEST BRAVO'&&p.ready));await a.locator('#lobby-start').click();
  await Promise.all([a,b].map(p=>p.waitForFunction(()=>window.__game.state==='playing'&&window.__game.countdown<=0,undefined,{timeout:20000})));
  console.log('PASS shared countdown and match start');
@@ -81,5 +89,6 @@ try{
 
  console.log('ERRORS',JSON.stringify(errors));assert.equal(errors.length,0);
  await mkdir('output/playwright',{recursive:true});await a.screenshot({path:'output/playwright/online-host.png'});await b.screenshot({path:'output/playwright/online-guest.png'});
-} catch(e){console.error('FAIL',e.message);for(let i=0;i<clients.length;i++){console.log('CLIENT',i,await clients[i].page.evaluate(()=>{const g=window.__game;return{state:g?.state,online:g?.online&&{connected:g.online.connected,id:g.online.id,host:g.online.hostId,world:g.online.world,peers:[...g.online.peers.values()].map(p=>({id:p.id,name:p.name,ready:p.ready})),remotes:[...g.online.remotes.values()].map(b=>({name:b.name,pos:b.pos,health:b.health,alive:b.alive}))},player:g?.player&&{pos:g.player.pos,kills:g.player.kills,deaths:g.player.deaths,health:g.player.health,alive:g.player.alive},status:document.getElementById('lobby-status')?.textContent}}));}console.error('ERRORS',errors);process.exitCode=1;
+ await b.evaluate(()=>window.__game.online.finish());await b.evaluate(()=>window.__game.online.leave());
+} catch(e){console.error('FAIL',e);for(let i=0;i<clients.length;i++){console.log('CLIENT',i,await clients[i].page.evaluate(()=>{const g=window.__game;return{state:g?.state,countdown:g?.countdown,time:g?.time,online:g?.online&&{connected:g.online.connected,id:g.online.id,host:g.online.hostId,world:g.online.world,peers:[...g.online.peers.values()].map(p=>({id:p.id,name:p.name,ready:p.ready})),remotes:[...g.online.remotes.values()].map(b=>({name:b.name,pos:b.pos,health:b.health,alive:b.alive}))},player:g?.player&&{pos:g.player.pos,kills:g.player.kills,deaths:g.player.deaths,health:g.player.health,alive:g.player.alive},status:document.getElementById('lobby-status')?.textContent}}));}console.error('ERRORS',errors);process.exitCode=1;
 }finally{for(const c of clients)await c.context.close();await browser.close();}

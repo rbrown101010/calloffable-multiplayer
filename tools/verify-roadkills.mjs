@@ -45,6 +45,8 @@ try{
    }
    await a.waitForFunction(()=>window.__game.online.peers.size===2&&window.__game.online.remotes.size===1,undefined,{timeout:15000});
    await b.waitForFunction(()=>window.__game.online.remotes.size===1,undefined,{timeout:15000});
+   await a.waitForFunction(()=>window.__game.online.isHost&&!window.__game.online.starting);await b.waitForFunction(()=>!window.__game.online.starting);
+   if(await a.evaluate(()=>window.__game.online.world.phase!=='lobby')){await a.evaluate(()=>window.__game.online.finish());await Promise.all([a,b].map(p=>p.waitForFunction(()=>window.__game.state==='ended')));await Promise.all([a,b].map(p=>p.locator('#btn-again').click()));}
    await a.locator('#lobby-bots').selectOption('3');await a.locator('#lobby-limit').selectOption('10');await b.locator('#lobby-ready').click();await a.waitForFunction(()=>[...window.__game.online.peers.values()].some(p=>p.ready));await a.locator('#lobby-start').click();
    await Promise.all([a,b].map(p=>p.waitForFunction(()=>window.__game.state==='playing'&&window.__game.countdown<=0,undefined,{timeout:20000})));
    await a.evaluate(()=>{const g=window.__game;g.bots.frozen=true;for(const b of g.bots.bots){b.die();b.respawnT=1e9;}g.player.teleport(g.player.pos.clone().set(45,0,31));});
@@ -77,7 +79,7 @@ try{
    await b.waitForTimeout(400);await b.keyboard.press('e');await b.waitForFunction(()=>window.__game.player.mounted,undefined,{timeout:5000});
    await b.keyboard.down('w');await b.keyboard.down('Shift');await b.waitForFunction(()=>window.__game.player.kills===2,undefined,{timeout:7000});await stop(b);
    assert.equal(await a.evaluate(()=>window.__game.player.alive),false);assert.equal(await a.evaluate(()=>window.__game.player.deaths),1);console.log('PASS guest-driven roadkill also defeats the host player');
-   await Promise.all([a,b].map(p=>p.evaluate(()=>window.__game.online.leave())));
+   await a.evaluate(()=>window.__game.online.finish());await b.waitForFunction(()=>window.__game.state==='ended');await Promise.all([a,b].map(p=>p.evaluate(()=>window.__game.online.leave())));
  }else console.log('SKIP multiplayer: provide lobby keys through .env.local');
  assert.equal(errors.length,0,JSON.stringify(errors));console.log('PASS no browser errors');
 }catch(e){console.error('FAIL',e);for(const context of contexts)for(const p of context.pages()){console.error('STATE',await p.evaluate(()=>{const g=window.__game;return{state:g?.state,player:{p:g?.player?.pos,alive:g?.player?.alive,kills:g?.player?.kills,health:g?.player?.health},vehicles:g?.vehicles?.snapshot(),bots:g?.bots?.bots.map(b=>({p:b.pos,health:b.health,alive:b.alive})),host:g?.online?.isHost};}).catch(()=>null));}console.error('ERRORS',errors);process.exitCode=1;
