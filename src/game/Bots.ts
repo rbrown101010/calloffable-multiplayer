@@ -156,6 +156,8 @@ export class BotManager {
     return best;
   }
 
+  setMap(map:RustMap) { this.map=map;this.dangerZones=[];for(const b of this.bots){b.path=[];b.node=b.goal=-1;b.target=null;b.climbing=false;} }
+
   spawnAll() { for (const b of this.bots) { const s = this.pickSpawn(b); b.spawnAt(s.pos, s.yaw + Math.PI); } }
   /** Alert bots near a position (gunfire / explosion). */
   alert(pos: THREE.Vector3, radius: number, source: any, time: number) {

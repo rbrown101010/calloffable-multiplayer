@@ -11,7 +11,8 @@
     "test:expansion": "node tools/verify-expansion.mjs",
     "test:roadkills": "node --env-file=.env.local tools/verify-roadkills.mjs",
     "test:operators": "node tools/verify-operators.mjs",
-    "test:multiplayer-flow": "node --env-file=.env.local tools/verify-multiplayer-flow.mjs"
+    "test:multiplayer-flow": "node --env-file=.env.local tools/verify-multiplayer-flow.mjs",
+    "test:multiplayer-maps": "node --env-file=.env.local tools/verify-multiplayer-maps.mjs"
   },
   "devDependencies": {
     "@ai-sdk/gateway": "^4.0.72",

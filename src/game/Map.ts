@@ -3,7 +3,7 @@ import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferG
 import { Physics, G } from './Physics';
 import { pbr, flat } from './Materials';
 import { fbm } from './Noise';
-import { DEG, rand, smoothstep, clamp } from './util';
+import { DEG, smoothstep, clamp } from './util';
 
 export interface Ladder { id: number; center: THREE.Vector3; halfW: number; bottom: number; top: number; /** direction from climber into the ladder wall */ facing: THREE.Vector3; }
 export interface Waypoint { id: number; pos: THREE.Vector3; links: number[]; ladder?: number; }
@@ -106,6 +106,8 @@ export class RustMap {
   /** half-size of the playable square (fence at PLAY-0.6, hard boundary at PLAY) */
   static PLAY = 48;
   bounds = 48;
+  private scenerySeed = 913;
+  private mapRand(min:number,max:number) { this.scenerySeed=(Math.imul(this.scenerySeed,1664525)+1013904223)>>>0;return min+(max-min)*this.scenerySeed/4294967296; }
   protected heights!: Float32Array; protected hSeg = 180; protected hSize = 240;
   groundMesh!: THREE.Mesh;
   mats!: Record<string, THREE.Material>;
@@ -499,7 +501,7 @@ export class RustMap {
     const yaw = yawDeg * DEG;
     for (let row = 0; row < 3; row++) for (let i = 0; i < 4; i++) {
       const off = (i - 1.5) * 0.62 + (row % 2) * 0.31; const y = 0.14 + row * 0.26;
-      B.box(M.sandbag, [0.6, 0.27, 0.36], [x + Math.cos(yaw) * off, y, z - Math.sin(yaw) * off], { rot: [0, yaw + rand(-0.06, 0.06), 0], tile: 0.6, collide: false });
+      B.box(M.sandbag, [0.6, 0.27, 0.36], [x + Math.cos(yaw) * off, y, z - Math.sin(yaw) * off], { rot: [0, yaw + this.mapRand(-0.06, 0.06), 0], tile: 0.6, collide: false });
     }
     this.physics.addStaticBox(new THREE.Vector3(x, 0.41, z), new THREE.Vector3(2.7, 0.82, 0.42), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)), G.WORLD, { surface: 'sand' });
   }
@@ -507,11 +509,11 @@ export class RustMap {
   // ---------------------------------------------------------------- PROPS
   protected buildProps(B: Builder, M: Record<string, THREE.Material>) {
     const barrel = (x: number, z: number, mat: THREE.Material, tipped = false, y = 0) => {
-      if (tipped) B.cyl(mat, 0.3, 0.88, [x, y + 0.3, z], { rot: [Math.PI / 2, rand(0, 6.28), 0], seg: 18, tile: 0.9 });
-      else B.cyl(mat, 0.3, 0.88, [x, y + 0.44, z], { rot: [0, rand(0, 6.28), 0], seg: 18, tile: 0.9 });
+      if (tipped) B.cyl(mat, 0.3, 0.88, [x, y + 0.3, z], { rot: [Math.PI / 2, this.mapRand(0, 6.28), 0], seg: 18, tile: 0.9 });
+      else B.cyl(mat, 0.3, 0.88, [x, y + 0.44, z], { rot: [0, this.mapRand(0, 6.28), 0], seg: 18, tile: 0.9 });
     };
-    const crate = (x: number, z: number, s: number, mat: THREE.Material, y = 0, yaw = rand(0, 6.28)) => B.box(mat, [s, s * 0.85, s], [x, y + s * 0.425, z], { rot: [0, yaw, 0], tile: 1.1 });
-    const tireStack = (x: number, z: number, n: number) => { for (let i = 0; i < n; i++) { const g = new THREE.TorusGeometry(0.36, 0.13, 10, 24); const m = new THREE.Matrix4().compose(new THREE.Vector3(x + rand(-0.04, 0.04), 0.13 + i * 0.26, z + rand(-0.04, 0.04)), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, rand(0, 6))), new THREE.Vector3(1, 1, 1)); B.custom(M.rubber, g, m, false, 'rubber'); } this.physics.addStaticCylinder(new THREE.Vector3(x, n * 0.13, z), 0.49, n * 0.26, undefined, G.WORLD, { surface: 'rubber' }); };
+    const crate = (x: number, z: number, s: number, mat: THREE.Material, y = 0, yaw = this.mapRand(0, 6.28)) => B.box(mat, [s, s * 0.85, s], [x, y + s * 0.425, z], { rot: [0, yaw, 0], tile: 1.1 });
+    const tireStack = (x: number, z: number, n: number) => { for (let i = 0; i < n; i++) { const g = new THREE.TorusGeometry(0.36, 0.13, 10, 24); const m = new THREE.Matrix4().compose(new THREE.Vector3(x + this.mapRand(-0.04, 0.04), 0.13 + i * 0.26, z + this.mapRand(-0.04, 0.04)), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, this.mapRand(0, 6))), new THREE.Vector3(1, 1, 1)); B.custom(M.rubber, g, m, false, 'rubber'); } this.physics.addStaticCylinder(new THREE.Vector3(x, n * 0.13, z), 0.49, n * 0.26, undefined, G.WORLD, { surface: 'rubber' }); };
     const pallet = (x: number, z: number, yaw = 0, y = 0) => { B.box(M.roughWood, [1.2, 0.05, 1.0], [x, y + 0.12, z], { rot: [0, yaw, 0], tile: 1, collide: false }); B.box(M.roughWood, [1.2, 0.14, 1.0], [x, y + 0.07, z], { rot: [0, yaw, 0], tile: 1 }); };
     // barrel clusters
     for (const [x, z] of [[-10, -12], [-9.3, -12.6], [-9.6, -11.4]]) barrel(x, z, M.barrelRust);
@@ -701,7 +703,7 @@ export class RustMap {
     // --- scattered cover along the ring roads
     const jersey = (x: number, z: number, yaw: number) => B.box(M.concreteBlock, [2.0, 0.9, 0.5], [x, 0.45, z], { rot: [0, yaw * DEG, 0], tile: 2 });
     jersey(-30, -30, 30); jersey(-28, -31, 30); jersey(30, -32, -20); jersey(28, 34, 60); jersey(-26, 34, -50); jersey(0, -46, 0); jersey(2.2, -46, 0); jersey(-46, 0, 90); jersey(46, -2, 90);
-    for (const [x, z] of [[-33, -22], [34, 33], [-22, -44], [24, 44], [44, -40], [-44, 42]]) { B.box(M.plywood, [1.2, 1.0, 1.2], [x, 0.6, z], { rot: [0, rand(0, 6), 0], tile: 1.1 }); B.cyl(M.barrelRust, 0.3, 0.88, [x + 1.3, 0.44, z + 0.4], { seg: 18, tile: 0.9 }); }
+    for (const [x, z] of [[-33, -22], [34, 33], [-22, -44], [24, 44], [44, -40], [-44, 42]]) { B.box(M.plywood, [1.2, 1.0, 1.2], [x, 0.6, z], { rot: [0, this.mapRand(0, 6), 0], tile: 1.1 }); B.cyl(M.barrelRust, 0.3, 0.88, [x + 1.3, 0.44, z + 0.4], { seg: 18, tile: 0.9 }); }
   }
 
   // ---------------------------------------------------------------- PERIMETER
@@ -709,15 +711,15 @@ export class RustMap {
     // boulders in a ring
     const N = 70;
     for (let i = 0; i < N; i++) {
-      const a = (i / N) * Math.PI * 2 + rand(-0.06, 0.06); const rr = 52 + rand(0, 8);
+      const a = (i / N) * Math.PI * 2 + this.mapRand(-0.06, 0.06); const rr = 52 + this.mapRand(0, 8);
       const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
-      const s = rand(2.2, 5.5);
+      const s = this.mapRand(2.2, 5.5);
       const g = mergeVertices(new THREE.IcosahedronGeometry(1, 4)); const p = g.attributes.position as THREE.BufferAttribute;
       for (let k = 0; k < p.count; k++) { const v = new THREE.Vector3(p.getX(k), p.getY(k), p.getZ(k)); const n = 1 + fbm(v.x * 1.4 + i, v.z * 1.4 + v.y * 0.8 + i * 3, 4) * 0.28 + fbm(v.x * 4 + i, v.y * 4, 2) * 0.05; v.multiplyScalar(n); p.setXYZ(k, v.x, v.y * 0.7, v.z); }
       g.computeVertexNormals();
       const uv = g.attributes.uv as THREE.BufferAttribute; for (let k = 0; k < uv.count; k++) { const ang = Math.atan2(p.getZ(k), p.getX(k)); uv.setXY(k, ang * s / 3.5, (p.getY(k) + Math.hypot(p.getX(k), p.getZ(k)) * 0.5) * s / 3.5); }
       const y = this.groundHeight(x, z) + s * 0.2;
-      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(-0.2, 0.2), rand(0, 6.28), rand(-0.2, 0.2))), new THREE.Vector3(s * rand(0.8, 1.3), s * rand(0.6, 0.9), s * rand(0.8, 1.3)));
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(this.mapRand(-0.2, 0.2), this.mapRand(0, 6.28), this.mapRand(-0.2, 0.2))), new THREE.Vector3(s * this.mapRand(0.8, 1.3), s * this.mapRand(0.6, 0.9), s * this.mapRand(0.8, 1.3)));
       B.custom(i % 3 === 0 ? M.laterite : M.sandstone, g, m, 'hull', 'rock');
     }
     // a few boulders inside the play area for cover
@@ -725,27 +727,27 @@ export class RustMap {
       const g = mergeVertices(new THREE.IcosahedronGeometry(1, 4)); const p = g.attributes.position as THREE.BufferAttribute;
       for (let k = 0; k < p.count; k++) { const v = new THREE.Vector3(p.getX(k), p.getY(k), p.getZ(k)); v.multiplyScalar(1 + fbm(v.x * 1.6 + x, v.z * 1.6 + v.y + z, 4) * 0.26 + fbm(v.x * 4 + x, v.y * 4, 2) * 0.05); p.setXYZ(k, v.x, v.y * 0.65, v.z); }
       g.computeVertexNormals(); const uv = g.attributes.uv as THREE.BufferAttribute; for (let k = 0; k < uv.count; k++) { const ang = Math.atan2(p.getZ(k), p.getX(k)); uv.setXY(k, ang * s / 3, (p.getY(k) + Math.hypot(p.getX(k), p.getZ(k)) * 0.5) * s / 3); }
-      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, s * 0.25, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rand(0, 6), 0)), new THREE.Vector3(s, s * 0.8, s));
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, s * 0.25, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.mapRand(0, 6), 0)), new THREE.Vector3(s, s * 0.8, s));
       B.custom(M.sandstone, g, m, 'hull', 'rock');
     }
     // desert scrub on the dunes (visual only) and small rocks near the fence line
     for (let i = 0; i < 140; i++) {
-      const a = rand(0, Math.PI * 2); const rr = rand(49, 76); const x = Math.cos(a) * rr, z = Math.sin(a) * rr; const y = this.groundHeight(x, z);
-      const n = 2 + Math.floor(rand(0, 4));
+      const a = this.mapRand(0, Math.PI * 2); const rr = this.mapRand(49, 76); const x = Math.cos(a) * rr, z = Math.sin(a) * rr; const y = this.groundHeight(x, z);
+      const n = 2 + Math.floor(this.mapRand(0, 4));
       for (let k = 0; k < n; k++) {
-        const s = rand(0.35, 0.8); const g = new THREE.IcosahedronGeometry(1, 1); const p = g.attributes.position as THREE.BufferAttribute;
+        const s = this.mapRand(0.35, 0.8); const g = new THREE.IcosahedronGeometry(1, 1); const p = g.attributes.position as THREE.BufferAttribute;
         for (let q = 0; q < p.count; q++) { const v = new THREE.Vector3(p.getX(q), p.getY(q), p.getZ(q)); v.multiplyScalar(1 + fbm(v.x * 3 + i, v.z * 3 + k, 2) * 0.35); p.setXYZ(q, v.x, v.y * 0.7, v.z); }
         g.computeVertexNormals();
-        const m = new THREE.Matrix4().compose(new THREE.Vector3(x + rand(-1, 1), y + s * 0.25, z + rand(-1, 1)), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rand(0, 6), 0)), new THREE.Vector3(s, s, s));
+        const m = new THREE.Matrix4().compose(new THREE.Vector3(x + this.mapRand(-1, 1), y + s * 0.25, z + this.mapRand(-1, 1)), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.mapRand(0, 6), 0)), new THREE.Vector3(s, s, s));
         B.custom(M.scrub, g, m, false, 'cloth');
       }
     }
     for (let i = 0; i < 70; i++) {
-      const a = rand(0, Math.PI * 2); const rr = rand(30, 66); const x = Math.cos(a) * rr, z = Math.sin(a) * rr; const s = rand(0.5, 1.4);
+      const a = this.mapRand(0, Math.PI * 2); const rr = this.mapRand(30, 66); const x = Math.cos(a) * rr, z = Math.sin(a) * rr; const s = this.mapRand(0.5, 1.4);
       const g = mergeVertices(new THREE.IcosahedronGeometry(1, 2)); const p = g.attributes.position as THREE.BufferAttribute;
       for (let q = 0; q < p.count; q++) { const v = new THREE.Vector3(p.getX(q), p.getY(q), p.getZ(q)); v.multiplyScalar(1 + fbm(v.x * 2 + i, v.z * 2 + v.y, 3) * 0.3); p.setXYZ(q, v.x, v.y * 0.6, v.z); }
       g.computeVertexNormals(); const uv = g.attributes.uv as THREE.BufferAttribute; for (let q = 0; q < uv.count; q++) { const ang = Math.atan2(p.getZ(q), p.getX(q)); uv.setXY(q, ang * s / 2, (p.getY(q) + 1) * s / 2); }
-      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, this.groundHeight(x, z) + s * 0.2, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rand(0, 6), 0)), new THREE.Vector3(s, s * 0.8, s));
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, this.groundHeight(x, z) + s * 0.2, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.mapRand(0, 6), 0)), new THREE.Vector3(s, s * 0.8, s));
       B.custom(M.rock3, g, m, rr < 50 ? 'hull' : false, 'rock');
     }
     // invisible boundary walls

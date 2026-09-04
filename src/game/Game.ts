@@ -27,6 +27,8 @@ const BOT_NAMES = ['GHOST', 'ROACH', 'SOAP', 'PRICE', 'MEAT', 'ROYCE', 'OZONE'];
 const BOT_SKILL = [0.55, 0.72, 0.88, 0.8, 0.5, 0.66, 0.76];
 const MATCH_TIME = 600;
 
+export type MapId = 'sable' | 'rust';
+type Arena = { map:RustMap;vehicles:Vehicles;items:FieldItems;colliders:number[] };
 type State = 'loading' | 'menu' | 'playing' | 'paused' | 'ended' | 'killcam';
 interface SnapEnt { x: number; y: number; z: number; feetY: number; yaw: number; aimYaw: number; aimPitch: number; alive: boolean; speed: number; }
 interface Snap { t: number; p: SnapEnt & { eyeY: number; pitch: number; ads: number }; b: SnapEnt[]; }
@@ -49,6 +51,9 @@ export class Game {
   params = new URLSearchParams(location.search);
   nolock = this.params.has('nolock'); god = this.params.has('god');
   menuAngle = 1.05;
+  mapChanging=false;private arenas=new Map<MapId,Arena>();
+  private skies=new Map<MapId,{tex:THREE.DataTexture;env:THREE.Texture;sunDir:THREE.Vector3}>();
+  get mapId():MapId { return this.mapName==='RUST'?'rust':'sable'; }
   private classReturnToLobby = false;
   private shadowTimer = 0; private adaptiveTime = 0; private adaptiveFrames = 0; private resolutionCooldown = 0; private snapTimer = 0; private minimapTimer = 0;
   private _v = new THREE.Vector3(); private _v2 = new THREE.Vector3();
@@ -65,8 +70,8 @@ export class Game {
     setLoad(0.06, 'STARTING PHYSICS');
     this.physics = await Physics.create();
     setLoad(0.1, 'LOADING SKY');
-    await this.setupSky();
     this.mapName = this.params.get('map') === 'rust' ? 'RUST' : 'SABLE REACH';
+    await this.setupSky();
     setLoad(0.16, 'LOADING SCANNED SCENERY');
     if(this.mapName!=='RUST')await SableMap.preload();
     setLoad(0.2, 'BUILDING ' + this.mapName);
@@ -114,6 +119,8 @@ export class Game {
     try { const extra: string[] = await (await fetch('/sounds/manifest.json')).json(); for (const n of extra) manifest[n] = `/sounds/${n}.mp3`; } catch {}
     await this.audio.load(manifest, (d, t) => setLoad(0.7 + 0.2 * d / t, `LOADING AUDIO ${d}/${t}`));
     this.vehicles = new Vehicles(this); this.fieldItems = new FieldItems(this);
+    const colliders:number[]=[];this.physics.world.forEachCollider(c=>{if((c.collisionGroups()>>>16)&(G.WORLD|G.VEHICLE))colliders.push(c.handle);});
+    this.arenas.set(this.mapId,{map:this.map,vehicles:this.vehicles,items:this.fieldItems,colliders});
     setLoad(0.92, 'COMPOSITING');
     this.post = setupPost(this.renderer, this.scene, this.camera, this.weaponCam, { ao: !this.params.has('noao') });
     this.renderMinimapBase();
@@ -143,15 +150,18 @@ export class Game {
     this.weaponCam = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 30); this.weaponCam.layers.set(VIEW_LAYER);
   }
 
-  private async setupSky() {
-    const tex = await new Promise<THREE.DataTexture>((res, rej) => new RGBELoader().setDataType(THREE.FloatType).load(this.params.get('map')==='rust'?'/hdri/goegap_2k.hdr':'/hdri/rogland_sunset_2k.hdr', res, undefined, rej));
-    tex.mapping = THREE.EquirectangularReflectionMapping;
-    const sunDir = findSunDirection(tex);
-    const pmrem = new THREE.PMREMGenerator(this.renderer); pmrem.compileEquirectangularShader();
-    const env = pmrem.fromEquirectangular(tex).texture;
-    this.scene.environment = env; this.scene.environmentIntensity = 0.65;
-    this.scene.background = tex; this.scene.backgroundIntensity = 0.85;
-    this.scene.fog = new THREE.FogExp2(0xcab49b, 0.003);
+  private async setupSky(id:MapId=this.mapId) {
+    let sky=this.skies.get(id);
+    if(!sky){
+      const tex=await new RGBELoader().setDataType(THREE.FloatType).loadAsync(id==='rust'?'/hdri/goegap_2k.hdr':'/hdri/rogland_sunset_2k.hdr');
+      tex.mapping=THREE.EquirectangularReflectionMapping;
+      const pmrem=new THREE.PMREMGenerator(this.renderer);pmrem.compileEquirectangularShader();
+      sky={tex,env:pmrem.fromEquirectangular(tex).texture,sunDir:findSunDirection(tex)};pmrem.dispose();this.skies.set(id,sky);
+    }
+    const {tex,env,sunDir}=sky;
+    this.scene.environment=env;this.scene.environmentIntensity=.65;this.scene.background=tex;this.scene.backgroundIntensity=.85;
+    this.scene.fog=new THREE.FogExp2(0xcab49b,.003);this.sunDir.copy(sunDir);
+    if(this.sun){this.renderer.shadowMap.needsUpdate=true;return;}
     // sun
     this.sun = new THREE.DirectionalLight(0xffe0b4, 2.7);
     this.sun.position.copy(sunDir).multiplyScalar(110); this.sun.target.position.set(0, 0, 0); this.scene.add(this.sun.target);
@@ -160,6 +170,42 @@ export class Game {
     const hemi = new THREE.HemisphereLight(0xb1c4d5, 0x80634b, 0.8); hemi.layers.enable(VIEW_LAYER); this.scene.add(hemi);
     // The HDR sun and bloom stay compatible with the half-float post-processing buffer.
     this.sunDir.copy(sunDir);
+  }
+
+  /** Swap scenery and collision together without replacing players, the room, or voice connections. */
+  async loadMap(id:MapId) {
+    if(id===this.mapId)return;
+    this.mapChanging=true;this.input.reset();this.input.unlock();this.vehicles.reset();
+    try {
+      if(id==='sable'&&!this.arenas.has(id))await SableMap.preload();
+      await this.setupSky(id);
+      this.bullets.clear();this.grenades.clear();this.effects.clear();
+      this.vm.root.visible=false;this.playerPuppet?.setVisible(false);
+      for(const b of [...this.bots.bots,...this.online.remotes.values()])b.puppet?.setVisible(false);
+      const old=this.arenas.get(this.mapId)!;this.setArenaActive(old,false);
+      this.mapName=id==='rust'?'RUST':'SABLE REACH';
+      let arena=this.arenas.get(id);
+      if(!arena){
+        const before=new Set<number>();this.physics.world.forEachCollider(c=>before.add(c.handle));
+        this.map=id==='rust'?new RustMap(this.physics):new SableMap(this.physics);this.scene.add(this.map.build());
+        this.vehicles=new Vehicles(this);this.fieldItems=new FieldItems(this);
+        const colliders:number[]=[];this.physics.world.forEachCollider(c=>{if(!before.has(c.handle))colliders.push(c.handle);});
+        arena={map:this.map,vehicles:this.vehicles,items:this.fieldItems,colliders};this.arenas.set(id,arena);
+      }
+      this.map=arena.map;this.vehicles=arena.vehicles;this.fieldItems=arena.items;this.setArenaActive(arena,true);
+      this.vehicles.reset();this.fieldItems.reset();this.player.setLadders(this.map.ladders);this.bots.setMap(this.map);
+      this.player.teleport(this.map.spawns[0].pos);this.renderMinimapBase();this.playerPuppet?.setVisible(true);
+      document.querySelectorAll('[data-map-name]').forEach(e=>e.textContent=this.mapName);
+      el<HTMLSelectElement>('map-select').value=id;this.params.set('map',id);
+      const url=new URL(location.href);url.searchParams.set('map',id);history.replaceState(null,'',url);
+      this.physics.step(1/60);this.renderer.shadowMap.needsUpdate=true;
+    } finally {this.mapChanging=false;}
+  }
+  private setArenaActive(arena:Arena,active:boolean) {
+    arena.map.group.visible=active;
+    for(const handle of arena.colliders)this.physics.world.getCollider(handle)?.setEnabled(active);
+    for(const v of arena.vehicles.list)v.model.visible=active;
+    for(const i of arena.items.list)i.model.visible=active;
   }
 
   // ------------------------------------------------------------------ UI
@@ -513,6 +559,7 @@ export class Game {
     const dt = Math.min(0.05, this.clock.getDelta()); this.time += dt;
     if(this.map instanceof SableMap)this.map.update(dt);
     this.online?.update(dt);
+    if(this.mapChanging||this.online?.world.phase==='loading'){this.render(dt);this.input.endFrame();return;}
     if (this.state === 'playing' || (this.state==='paused'&&this.online?.active)) this.updatePlaying(dt);
     else if (this.state === 'killcam') this.updateKillcam(dt);
     else if (this.state === 'menu' || this.state === 'ended') this.updateMenuCam(dt);

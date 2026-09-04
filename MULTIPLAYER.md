@@ -6,7 +6,15 @@ The public site supports solo play. Multiplayer requires an unguessable invitati
 
 Invite URLs use a fragment (`#invite=…`), which is removed from the address bar and kept in the current tab's session storage. The owner's `#host=…` link additionally retrieves the shareable invitation key. The first connected player is the simulation host; ownership and simulation hosting are separate.
 
-No room list or public matchmaking exists. Maximum occupancy is eight humans. AI fill is reduced as people join. Matches are free-for-all on Sable Reach, with shared countdown, score limit, timer, scoreboard, deaths, respawns, and rematches. Late arrivals receive the host snapshot. Leaving the room transfers hosting to the next player.
+No room list or public matchmaking exists. Maximum occupancy is eight humans. AI fill is reduced as people join. Matches are free-for-all on either Rust (small) or Sable Reach (large), with shared countdown, score limit, timer, scoreboard, deaths, respawns, and rematches. Late arrivals receive the host snapshot. Leaving the room transfers hosting to the next player.
+
+## Choosing a map
+
+The host selects **Match map** in the lobby before starting a match or rematch. Choose **Rust — Small** for the original compact arena, or **Sable Reach — Large** for the expanded map with vehicles and field supplies. Everyone loads the host's selection automatically, including late arrivals. The host waits for each connected player's map acknowledgement before starting the shared countdown.
+
+Map changes preserve the room, invitation, player identity, and microphone connection. Scenery and collision switch together; inactive map colliders are disabled. Rust uses a fixed scenery seed so crates, barrels, rocks, and their collision shapes agree across clients. Both arenas are cached after their first load. A failed download shows Retry and Leave lobby controls.
+
+After a match ends, return to the lobby, choose the next map, and start the rematch. Host and invite links stay the same for both maps.
 
 ## Class changes and session flow
 
@@ -14,7 +22,7 @@ An invite opens the callsign form directly. No email/password signup is needed. 
 
 Class selection queues equipment for the next life. Only the host grants respawns. Every player pose and spawn grant carries a life number and equipped class; a guest applies each life once, so a repeated grant or world snapshot cannot refill ammo or revert equipment. The host checks shots against that life's class, independently of the next class selected in presence. Weapons are cloned from templates preloaded at boot and both slots reset atomically on respawn.
 
-World snapshots carry a monotonic sequence; recovery snapshots from presence cannot replace newer live state. Guest movement goes to the host and every other avatar is rendered from the host's snapshots, avoiding competing movement streams. Bot visibility and hitboxes follow the same authoritative roster through respawns and late joins. Protocol v2 uses a room suffix so old open tabs cannot mix incompatible spawn messages with the updated build. Everyone should refresh after this update; invite links remain the same.
+World snapshots carry a monotonic sequence; recovery snapshots from presence cannot replace newer live state. Guest movement goes to the host and every other avatar is rendered from the host's snapshots, avoiding competing movement streams. Bot visibility and hitboxes follow the same authoritative roster through respawns and late joins. Protocol v3 uses a room suffix so old open tabs cannot mix incompatible map and spawn messages with the updated build. Everyone should refresh after this update; invite links remain the same.
 
 ## Authority and operating limits
 

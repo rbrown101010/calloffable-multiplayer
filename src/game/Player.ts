@@ -63,6 +63,8 @@ export class Player {
     this.cc.setCharacterMass(85);
   }
 
+  setLadders(ladders:Ladder[]) { this.ladders=ladders;this.climbing=null; }
+
   setMounted(on:boolean){
     this.mounted=on;
     this.collider.setHalfHeight(on?.16:this.crouching?CAP_HH_CROUCH:CAP_HH_STAND);

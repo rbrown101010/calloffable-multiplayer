@@ -7,7 +7,7 @@ A browser FPS with a 240 × 240 m desert refinery, ten loadouts, seven tactical 
 ## Play
 
 - **Deploy solo:** choose Sable Reach or the original Rust map, a loadout, difficulty, and score limit.
-- **Private multiplayer:** open an invite link, enter a callsign, and join. Choose your class inside the lobby, then ready up; the first player hosts and starts the match. Bot fill keeps empty slots active.
+- **Private multiplayer:** open an invite link, enter a callsign, and join. Choose your class inside the lobby, then ready up. The first player hosts, selects **Match map → Rust — Small** or **Sable Reach — Large**, and starts the match. Everyone loads the selected map automatically. Bot fill keeps empty slots active.
 - **Change class in a match:** press **L** or use **Escape → Change Loadout**. The selected class equips on your next respawn, with both weapons, full ammo and grenades. Your lobby, score and match stay intact.
 - **Return or leave:** closing the lobby during a match returns to the game. Only **Leave lobby** disconnects you. Multiplayer continues while menus are open.
 - **Voice:** microphone off by default. Enable it in the lobby or pause overlay. Optional push-to-talk uses **V**. Click a player's mic indicator to mute them locally.
@@ -117,3 +117,5 @@ Code is MIT. Third-party assets retain their individual licenses. The retained R
 `npm run test:multiplayer-flow` checks fresh invitation entry, all ten classes, active versus queued equipment, duplicate spawn protection, guest shooting, death during class selection, visible bots and humans, late joining, rematches and host transfer across three browser contexts. `node --env-file=.env.local tools/verify-lobby-capacity.mjs` checks eight actual game clients and rejects a ninth.
 
 `npm run test:online` exercises live bullets, score, respawn, driving and two-way voice. Multiplayer browser tests use an isolated ephemeral room suffix, so they do not join the players' lobby. Set `TEST_URL` to verify the deployed build.
+
+`npm run test:multiplayer-maps` checks map selection, slow-loader synchronization, identical Rust collision layouts, room and microphone continuity, guest bullet damage and respawn, class changes, late joining, rematches between both maps, and host transfer in three isolated browser contexts.

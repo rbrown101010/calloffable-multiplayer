@@ -181,6 +181,14 @@ export class Effects {
     this.motes = new THREE.Points(mg, mm); this.motes.frustumCulled = false; scene.add(this.motes);
   }
 
+  clear() {
+    this.add.update(1e6);this.norm.update(1e6);
+    for(const pool of [this.shells,this.chunks])for(let i=0;i<pool.items.length;i++)pool.release(i);
+    for(const pool of [this.holes,this.scorch,this.sandHoles]){pool.dummy.position.set(0,-999,0);pool.dummy.updateMatrix();for(let i=0;i<pool.count;i++)pool.mesh.setMatrixAt(i,pool.dummy.matrix);pool.mesh.instanceMatrix.needsUpdate=true;pool.i=0;}
+    for(const f of this.flashes){this.scene.remove(f.s);f.s.material.dispose();}this.flashes=[];
+    for(const f of this.lights)this.scene.remove(f.l);this.lights=[];
+  }
+
   update(dt: number, camPos: THREE.Vector3, time: number) {
     this.add.update(dt); this.norm.update(dt);
     this.shells.update(dt, 9, (p) => { this.audio.casing(p); });
