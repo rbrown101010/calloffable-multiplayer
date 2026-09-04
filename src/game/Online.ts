@@ -199,13 +199,18 @@ export class Online {
       if(id===this.id)continue;const e=this.entity(id) as Bot;if(!e)continue;
       const y=p.p[1]+(p.crouch?.56:.9),t=1-Math.exp(-dt*18);const dest=new THREE.Vector3(p.p[0],y,p.p[2]);
       if(e.pos.distanceTo(dest)>6)e.pos.copy(dest);else e.pos.lerp(dest,t);
-      if(e.crouch!==p.crouch){e.crouch=p.crouch;e.stance=p.crouch;e.collider.setHalfHeight(p.crouch?.2:.54);e.hitHead.setTranslationWrtParent({x:0,y:p.crouch?.43:.66,z:0});e.hitBody.setTranslationWrtParent({x:0,y:p.crouch?.08:.2,z:0});}
+      const riding=this.g.vehicles.list.some(v=>v.driver===id);
+      if(e.crouch!==p.crouch||(e as any).riding!==riding){
+        (e as any).riding=riding;e.crouch=p.crouch;e.stance=p.crouch;
+        e.collider.setHalfHeight(riding?.16:p.crouch?.2:.54);e.collider.setTranslationWrtParent({x:0,y:riding?-.17:0,z:0});
+        e.hitHead.setTranslationWrtParent({x:0,y:riding?.16:p.crouch?.43:.66,z:0});e.hitBody.setTranslationWrtParent({x:0,y:riding?-.22:p.crouch?.08:.2,z:0});
+      }
       e.aimYaw=p.yaw;e.aimPitch=p.pitch;e.yaw=p.yaw;e.vel.set(Math.sin(p.yaw)*p.speed,0,Math.cos(p.yaw)*p.speed);
       for(const c of[e.collider,e.hitHead,e.hitBody,e.hitLegs])if(c.isEnabled()!==(e.alive&&this.active))c.setEnabled(e.alive&&this.active);
       e.body.setTranslation(e.pos,true);e.body.setNextKinematicTranslation(e.pos);
       if(WEAPONS[p.weapon]&&e.def.id!==p.weapon){e.def=WEAPONS[p.weapon];void e.puppet?.setWeapon(e.def);}
       e.puppet?.setVisible(this.active||this.world.phase==='ended');
-      e.puppet?.update(dt,{pos:e.pos,feetY:p.p[1],yaw:p.yaw,aimYaw:p.yaw,aimPitch:p.pitch,speed:p.speed,crouch:p.crouch,riding:this.g.vehicles.list.some(v=>v.driver===id),alive:e.alive,deathT:(now-(this.deathTimes.get(id)||now))/1000});
+      e.puppet?.update(dt,{pos:e.pos,feetY:p.p[1],yaw:p.yaw,aimYaw:p.yaw,aimPitch:p.pitch,speed:p.speed,crouch:p.crouch,riding,alive:e.alive,deathT:(now-(this.deathTimes.get(id)||now))/1000});
     }
     if(this.active&&now-this.lastSend>66){this.lastSend=now;this.send({kind:'pose',seq:++this.poseSeq,pose:this.pose(this.g.player,this.id),vehicle:this.g.vehicles.snapshot().find(v=>v.driver===this.id)});if(this.isHost)this.broadcastWorld();}
     if(now-this.lastPresence>1500){this.lastPresence=now;this.publishPresence();this.render();}

@@ -62,8 +62,14 @@ export class Player {
     this.cc.setCharacterMass(85);
   }
 
+  setMounted(on:boolean){
+    this.mounted=on;
+    this.collider.setHalfHeight(on?.16:this.crouching?CAP_HH_CROUCH:CAP_HH_STAND);
+    this.collider.setTranslationWrtParent({x:0,y:on?-.17:0,z:0});
+  }
+
   get feetY() { return this.pos.y - (this.crouching ? CAP_HH_CROUCH : CAP_HH_STAND) - CAP_R; }
-  get eyePos() { return this.mounted ? this._seatEye.copy(this.pos).add(new THREE.Vector3(0,.48,0)) : this.rig.position; }
+  get eyePos() { return this.mounted ? this._seatEye.copy(this.pos).add(new THREE.Vector3(0,.15,0)) : this.rig.position; }
   get forward() { return this._f.set(0, 0, -1).applyQuaternion(this.rig.quaternion); }
   get right() { return this._r.set(1, 0, 0).applyQuaternion(this.rig.quaternion); }
   get flatForward() { return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); }

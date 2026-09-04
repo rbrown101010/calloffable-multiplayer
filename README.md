@@ -83,7 +83,10 @@ Read [MULTIPLAYER.md](MULTIPLAYER.md) for deployment, session authority, and ope
 
 ## Verification
 
+Start a test server in a separate terminal with `PLAYWRIGHT_TEST=1 npm run dev -- --port 5180`, then run:
+
 ```sh
+export TEST_URL=http://127.0.0.1:5180
 node --env-file=.env.local tools/verify-online.mjs
 # Against a deployed build:
 TEST_URL=https://your-site.vercel.app node --env-file=.env.local tools/verify-online.mjs
