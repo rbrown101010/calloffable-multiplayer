@@ -60,7 +60,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
   },
   intervention: {
     id: 'intervention', name: 'INTERVENTION', cls: 'sniper', mode: 'bolt',
-    damage: 100, headMul: 1.5, legMul: 0.7, falloffStart: 200, falloffEnd: 400, falloffMin: 1.0,
+    damage: 82, headMul: 1.5, legMul: 0.7, falloffStart: 200, falloffEnd: 400, falloffMin: 1.0,
     rpm: 45, pellets: 1, pelletSpread: 0,
     mag: 5, reserve: 25, reloadTime: 3.4, reloadEmptyTime: 3.9, magOutT: 0.4,
     adsTime: 0.42, adsFov: 14, scope: true,
@@ -100,7 +100,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     speedMul: 0.94, bulletSpeed: 715, range: 300, boltTime: 0, drawTime: 0.5,
     sounds: { shot: 'shot_ak_near', far: 'shot_ak_far', reload: 'reload_rifle', shotVol: 0.95 },
     audio: { shot: ['ak_1', 'ak_2', 'ak_3'], far: ['shot_ak_far'], reload: ['reload_ar_2', 'reload_ar_1'], vol: 0.95, rateVar: 0.035, sub: 0.45, subFreq: 58, subDecay: 0.16, crack: 0.3, echo: ['shot_ak_far'], echoVol: 0.25, echoDelay: 0.22, reverb: 0.32 },
-    model: { url: '/models/weapons/ak47.glb', scale: 0.95, rot: [0, Math.PI, 0], hip: [0.2, -0.2, -0.5], ads: [0, -0.1, -0.4], sprint: [0.16, -0.26, -0.45], sprintRot: [0.35, -0.5, 0.1], muzzle: [0, 0.03, 0], eject: [0.04, 0.03, 0.05], worldScale: 1 },
+    model: { url: 'proc:ak47', scale: 1, rot: [0, 0, 0], hip: [0.2, -0.2, -0.5], ads: [0, -0.1, -0.4], sprint: [0.16, -0.26, -0.45], sprintRot: [0.35, -0.5, 0.1], muzzle: [0, 0.03, 0], eject: [0.04, 0.03, 0.05], worldScale: 1 },
     tracer: true, flashScale: 1.0, shell: 'rifle',
   },
   spas12: {
@@ -155,9 +155,11 @@ export interface Loadout { id: string; name: string; tag: string; desc: string; 
 WEAPONS.scarScout = { ...WEAPONS.scarh, id: 'scarScout', name: 'SCAR-H DMR', mode: 'semi', damage: 62, rpm: 280, mag: 12, reserve: 72, adsSpread: 0.035, falloffStart: 65, falloffEnd: 145, recoilPitch: 1.5 * D, adsFov: 42 };
 WEAPONS.akSupport = { ...WEAPONS.ak47, id: 'akSupport', name: 'AK-47 SUPPORT', mag: 60, reserve: 180, speedMul: 0.86, adsTime: 0.34, reloadTime: 3.4, reloadEmptyTime: 4.1, recoilPitch: 0.95 * D };
 WEAPONS.mp5Recon = { ...WEAPONS.mp5, id: 'mp5Recon', name: 'MP5 RECON', rpm: 720, damage: 28, hipSpread: 2.0, recoilPitch: 0.44 * D, speedMul: 1.08, adsTime: 0.13, flashScale: 0.35 };
+// Automatic weapons recover predictably; damage and fire rates remain class-specific.
+for(const d of Object.values(WEAPONS))if(d.mode==='auto'){d.recoilPitch*=.85;d.recoilYaw*=.72;d.bloom*=.78;d.bloomMax*=.8;d.bloomDecay*=1.15;d.adsTime*=.9;d.viewKick*=.82;}
 export const LOADOUTS: Loadout[] = [
   { id: 'assault', name: 'ASSAULT', tag: 'ALL-ROUNDER', desc: 'SCAR-H · DESERT EAGLE · FRAG', primary: 'scarh', secondary: 'deagle', lethal: 1 },
-  { id: 'sniper', name: 'SNIPER', tag: 'ONE SHOT', desc: 'INTERVENTION · M1911 · FRAG', primary: 'intervention', secondary: 'm1911', lethal: 1 },
+  { id: 'sniper', name: 'SNIPER', tag: 'HEADSHOT SPECIALIST', desc: 'INTERVENTION · M1911 · FRAG', primary: 'intervention', secondary: 'm1911', lethal: 1 },
   { id: 'rusher', name: 'RUSHER', tag: 'CLOSE QUARTERS', desc: 'MP5 · DESERT EAGLE · FRAG ×2', primary: 'mp5', secondary: 'deagle', lethal: 2 },
   { id: 'overkill', name: 'OVERKILL', tag: 'TWO PRIMARIES', desc: 'AK-47 · SPAS-12 · FRAG', primary: 'ak47', secondary: 'spas12', lethal: 1 },
   { id: 'marksman', name: 'MARKSMAN', tag: 'PRECISION', desc: 'SCAR-H DMR · M1911 · FRAG', primary: 'scarScout', secondary: 'm1911', lethal: 1 },

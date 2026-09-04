@@ -63,9 +63,9 @@ export class HUD {
     this.ammoMag.textContent = mag.toString(); this.ammoRes.textContent = res.toString();
     this.ammoMag.classList.toggle('low', mag <= Math.max(1, Math.floor(magSize * 0.25)) && !reloading); this.ammoMag.classList.toggle('reloading', reloading);
   }
-  setStreaks(streak: number, uav: 'locked' | 'ready' | 'active', air: 'locked' | 'ready' | 'active') {
+  setStreaks(streak: number, uav: 'locked' | 'ready' | 'active', air: 'locked' | 'ready' | 'active', chopper: 'locked' | 'ready' | 'active' = 'locked', randomName = 'RANDOM REWARD') {
     const chip = (key: string, name: string, need: number, st: string) => `<div class="sk ${st}"><b>${key}</b><span>${name}</span><i>${st === 'locked' ? `${Math.min(streak, need)}/${need}` : st === 'ready' ? 'READY' : 'ACTIVE'}</i></div>`;
-    const html = chip('3', 'UAV', 3, uav) + chip('4', 'AIRSTRIKE', 5, air);
+    const html = chip('3', 'UAV', 3, uav) + chip('4', randomName, 5, air) + chip('5', 'CHOPPER GUNNER', 9, chopper);
     if (html !== this.lastStreakHtml) { this.streaksEl.innerHTML = html; this.lastStreakHtml = html; }
   }
   setAmmoWarn(text: string | null) { if ((this.ammoWarn.textContent || '') !== (text || '')) this.ammoWarn.textContent = text || ''; }

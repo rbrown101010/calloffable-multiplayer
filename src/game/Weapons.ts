@@ -9,30 +9,34 @@ import { AudioManager } from './Audio';
 import { Player } from './Player';
 import { Input } from './Input';
 import { clamp, damp, lerp, rand, DEG } from './util';
-import { buildIntervention } from './ProceduralGuns';
+import { buildIntervention, buildGrenade, buildAK47 } from './ProceduralGuns';
 
 export const VIEW_LAYER = 1;
+export const FRAG_RELEASE=.24,FRAG_RECOVER=.72;
 
 // ------------------------------------------------------------- model loading
 const gltfLoader = new GLTFLoader(); gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 const modelCache = new Map<string, Promise<THREE.Object3D>>();
+const spasSteel=new THREE.MeshStandardMaterial({color:0x1b1b1d,roughness:.42,metalness:.8}),spasPolymer=new THREE.MeshStandardMaterial({color:0x141414,roughness:.75,metalness:.15});
 const loadedModels = new Map<string, THREE.Object3D>();
 export function loadWeaponModel(def: WeaponDef): Promise<THREE.Object3D> {
   const url = def.model.url;
   if (!modelCache.has(url)) {
     const p: Promise<THREE.Object3D> = url.startsWith('proc:')
-      ? Promise.resolve(url === 'proc:intervention' ? buildIntervention() : new THREE.Group())
+      ? Promise.resolve(url === 'proc:intervention' ? buildIntervention() : url==='proc:ak47'?buildAK47():new THREE.Group())
       : new Promise((res, rej) => gltfLoader.load(url, (g) => res(g.scene), undefined, (e) => rej(e)));
     modelCache.set(url, p.catch((e) => { console.warn('weapon model failed', url, e); return placeholderGun(); }).then(m => { loadedModels.set(url, m); return m; }));
   }
   return modelCache.get(url)!.then(m => cloneWeaponModel(def, m));
 }
+/** Clone a weapon already loaded at boot without an asynchronous equip race. */
+export function cloneLoadedWeapon(def:WeaponDef){const model=loadedModels.get(def.model.url);return model?cloneWeaponModel(def,model):null;}
 function cloneWeaponModel(def: WeaponDef, m: THREE.Object3D) {
     const c = skClone(m);
     if (def.id === 'spas12') {
       // the low-poly SPAS-12 ships without textures: give it a proper blued-steel / polymer look
-      const steel = new THREE.MeshStandardMaterial({ color: 0x1b1b1d, roughness: 0.42, metalness: 0.8 });
-      const polymer = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.75, metalness: 0.15 });
+      const steel=spasSteel;
+      const polymer=spasPolymer;
       let i = 0; c.traverse((o: any) => { if (o.isMesh) { o.material = (i++ % 3 === 0) ? polymer : steel; } });
     }
     c.traverse((o: any) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach((mt: any) => { if (mt && 'envMapIntensity' in mt) mt.envMapIntensity = 1.0; }); } });
@@ -48,7 +52,7 @@ export function centerModel(model: THREE.Object3D, outMin?: THREE.Vector3, outMa
 function placeholderGun() { const g = new THREE.Group(); const m = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.6), new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6, metalness: 0.6 })); m.position.z = -0.2; g.add(m); return g; }
 
 // ------------------------------------------------------------- view model
-export interface VMState { ads: number; sprinting: boolean; speed: number; grounded: boolean; crouching: boolean; sliding: boolean; mouseDX: number; mouseDY: number; bobPhase: number; time: number; climbing: boolean; lowered: number; }
+export interface VMState { ads: number; sprinting: boolean; speed: number; grounded: boolean; crouching: boolean; sliding: boolean; mouseDX: number; mouseDY: number; bobPhase: number; time: number; climbing: boolean; lowered: number; cookTime?:number; }
 
 export class ViewModel {
   root = new THREE.Group(); pivot = new THREE.Group(); holder = new THREE.Group(); modelRoot = new THREE.Group();
@@ -61,10 +65,22 @@ export class ViewModel {
   reloadT = -1; reloadDur = 1; boltT = -1; boltDur = 1; drawT = 1; drawDur = 0.4; holsterT = -1; holsterDur = 0.25; throwT = -1;
   magNode: THREE.Object3D | null = null; magRest = new THREE.Vector3();
   scopedHidden = false; bboxMin = new THREE.Vector3(); bboxMax = new THREE.Vector3();
+  optic=new THREE.Group();private reticle=new THREE.Mesh(new THREE.CircleGeometry(.0015,16),new THREE.MeshBasicMaterial({color:0xff3026,depthTest:false,toneMapped:false}));
+  fragRoot=new THREE.Group();private fragHand=new THREE.Group();private frag=buildGrenade();
   private _e = new THREE.Euler(); private _v = new THREE.Vector3();
 
   constructor(camera: THREE.Camera) {
     camera.add(this.root); this.root.add(this.pivot); this.pivot.add(this.holder); this.holder.add(this.modelRoot); this.holder.add(this.muzzle); this.holder.add(this.ejectPt);
+    this.holder.add(this.optic);const opticMat=new THREE.MeshStandardMaterial({color:0x202623,roughness:.55,metalness:.6});
+    const rim=new THREE.Mesh(new THREE.TorusGeometry(.045,.005,6,24),opticMat);this.optic.add(rim);
+    const mount=new THREE.Mesh(new THREE.BoxGeometry(.055,.04,.07),opticMat);mount.position.y=-.058;this.optic.add(mount);
+    const lens=new THREE.Mesh(new THREE.CircleGeometry(.042,24),new THREE.MeshBasicMaterial({color:0x97c9bc,transparent:true,opacity:.045,depthWrite:false}));this.optic.add(lens);
+    this.root.add(this.reticle);this.reticle.position.set(0,0,-.35);this.reticle.visible=false;
+    this.root.add(this.fragRoot);this.fragRoot.add(this.fragHand);this.fragRoot.visible=false;
+    const sleeve=new THREE.Mesh(new THREE.CapsuleGeometry(.055,.34,4,8),new THREE.MeshStandardMaterial({color:0x59624d,roughness:.95}));sleeve.rotation.x=Math.PI/2;sleeve.position.z=.22;this.fragHand.add(sleeve);
+    const glove=new THREE.Mesh(new THREE.BoxGeometry(.1,.07,.13),new THREE.MeshStandardMaterial({color:0x242a25,roughness:.85}));glove.position.set(0,-.012,.015);this.fragHand.add(glove);
+    for(let i=0;i<4;i++){const finger=new THREE.Mesh(new THREE.CapsuleGeometry(.011,.047,3,6),glove.material);finger.rotation.x=Math.PI/2;finger.position.set((i-1.5)*.022,.024,-.04);this.fragHand.add(finger);}
+    this.frag.scale.setScalar(1.35);this.frag.position.set(0,.06,-.02);this.fragHand.add(this.frag);
     const fm = new THREE.SpriteMaterial({ map: makeFlash(), blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true, color: 0xffe0b0 });
     this.flash = new THREE.Sprite(fm); this.flash.visible = false; this.flash.scale.setScalar(0.35); this.muzzle.add(this.flash);
     this.flashLight = new THREE.PointLight(0xffb060, 0, 8, 2); this.flashLight.position.set(0, 0, -0.1); this.muzzle.add(this.flashLight);
@@ -79,12 +95,12 @@ export class ViewModel {
     model.traverse((o) => o.layers.set(VIEW_LAYER));
     // auto-center the geometry on the holder origin (Sketchfab pivots are arbitrary). Computed before parenting so the box is in holder space.
     centerModel(model, this.bboxMin, this.bboxMax);
-    this.modelRoot.add(model);
+    this.modelRoot.add(model);this.optic.visible=def.mode==='auto';this.optic.position.set(0,this.bboxMax.y+.06,0);this.reticle.visible=false;
     const mags: THREE.Object3D[] = []; model.traverse((o) => { if (/mag(azine)?/i.test(o.name) && !/base|fde/i.test(o.name)) mags.push(o); });
     this.magNode = mags[0] ?? null; if (this.magNode) this.magRest.copy(this.magNode.position);
     this.muzzle.position.set(M.muzzle[0], M.muzzle[1], this.bboxMin.z + 0.01); this.ejectPt.position.set(M.eject[0], M.eject[1], M.eject[2]);
     this.flash.scale.setScalar(0.32 * def.flashScale);
-    this.reloadT = -1; this.boltT = -1; this.throwT = -1; this.holsterT = -1; this.drawT = 0; this.drawDur = def.drawTime;
+    this.fragRoot.visible=false;this.reloadT = -1; this.boltT = -1; this.throwT = -1; this.holsterT = -1; this.drawT = 0; this.drawDur = def.drawTime;
     this.kickPos.set(0, 0, 0); this.kickVel.set(0, 0, 0); this.kickRot.set(0, 0, 0); this.kickRotVel.set(0, 0, 0);
   }
 
@@ -105,7 +121,7 @@ export class ViewModel {
     const sprintTarget = s.sprinting && s.ads < 0.2 && this.reloadT < 0 ? 1 : 0;
     this.sprintBlend = damp(this.sprintBlend, sprintTarget, 10, dt);
     this.lowerBlend = damp(this.lowerBlend, s.lowered, 10, dt);
-    const px = lerp(M.hip[0], M.ads[0], s.ads), py = lerp(M.hip[1], M.ads[1], s.ads), pz = lerp(M.hip[2], M.ads[2], s.ads);
+    const px = lerp(M.hip[0], d.mode==='auto'?0:M.ads[0], s.ads), py = lerp(M.hip[1], d.mode==='auto'?-this.optic.position.y:M.ads[1], s.ads), pz = lerp(M.hip[2], M.ads[2], s.ads);
     const pos = this._v.set(lerp(px, M.sprint[0], this.sprintBlend), lerp(py, M.sprint[1], this.sprintBlend), lerp(pz, M.sprint[2], this.sprintBlend));
     const rot = this._e.set(M.sprintRot[0] * this.sprintBlend, M.sprintRot[1] * this.sprintBlend, M.sprintRot[2] * this.sprintBlend);
     // lowered (grenade / climbing)
@@ -125,8 +141,21 @@ export class ViewModel {
       rot.z -= 0.28 * w; rot.x += 0.14 * w; pos.x += 0.035 * w; pos.z += 0.03 * w; pos.y -= 0.02 * w;
       if (t >= 1) this.boltT = -1;
     }
-    // ---- throw
-    if (this.throwT >= 0) { this.throwT += dt; const t = clamp(this.throwT / 0.45, 0, 1); const w = Math.sin(Math.PI * t); pos.y -= 0.2 * w; pos.x -= 0.1 * w; rot.x -= 0.8 * w; rot.z -= 0.5 * w; if (t >= 1) this.throwT = -1; }
+    // Pin pull, cocked hand, overarm release and follow-through share the projectile clock.
+    const cooking=s.cookTime!==undefined;
+    this.fragRoot.visible=cooking||this.throwT>=0;
+    if(cooking){
+      const t=clamp(s.cookTime!/.22,0,1),ease=1-(1-t)**3;
+      this.fragHand.position.set(.27,-.48+.29*ease,-.42);
+      this.fragHand.rotation.set(-.25,.1,-.12+Math.sin(t*Math.PI)*.25);this.frag.visible=true;
+    }
+    if(this.throwT>=0){
+      const time=this.throwT;
+      if(time<FRAG_RELEASE){const t=time/FRAG_RELEASE,e=t*t*(3-2*t);this.fragHand.position.set(.27-.12*e,-.19+.22*Math.sin(e*Math.PI),-.42-.4*e);this.fragHand.rotation.set(-.25-1.3*e,.1,-.12+.4*e);}
+      else{const t=clamp((time-FRAG_RELEASE)/(FRAG_RECOVER-FRAG_RELEASE),0,1);this.fragHand.position.set(.15+.18*t,-.19-.65*t,-.82+.5*t);this.fragHand.rotation.set(-1.55+t,.1,.28-.4*t);}
+      this.frag.visible=time<FRAG_RELEASE;
+      pos.y-=.32*(1-clamp((time-.35)/.37,0,1));rot.z-=.3*(1-clamp((time-.35)/.37,0,1));
+    }
     // ---- draw / holster
     if (this.drawT < 1) { this.drawT = Math.min(1, this.drawT + dt / Math.max(0.05, this.drawDur)); const k = 1 - this.drawT; const kk = k * k; pos.y -= 0.42 * kk; pos.x += 0.08 * kk; rot.x -= 1.1 * kk; rot.z -= 0.35 * kk; }
     if (this.holsterT >= 0) { this.holsterT += dt; const t = clamp(this.holsterT / this.holsterDur, 0, 1); const kk = t * t; pos.y -= 0.42 * kk; pos.x += 0.08 * kk; rot.x -= 1.1 * kk; rot.z -= 0.35 * kk; }
@@ -148,6 +177,7 @@ export class ViewModel {
     this.holder.position.set(pos.x, pos.y, pos.z); this.holder.rotation.set(rot.x, rot.y, rot.z);
     this.pivot.position.set(this.swayPos.x * adsK + bobX + this.kickPos.x, this.swayPos.y * adsK + bobY + breatheY + this.kickPos.y, this.kickPos.z);
     this.pivot.rotation.set(this.swayRot.x * adsK + this.kickRot.x * 0.06 + breatheR * 0.3, this.swayRot.y * adsK + this.kickRot.y * 0.05, this.swayRot.z * adsK + this.kickRot.z * 0.05 + breatheR + (s.sliding ? -0.12 : 0));
+    this.reticle.visible=d.mode==='auto'&&s.ads>.75&&this.reloadT<0&&!s.lowered&&this.throwT<0;
     // ---- hide when fully scoped
     const hide = !!d.scope && s.ads > 0.82;
     if (hide !== this.scopedHidden) { this.scopedHidden = hide; this.modelRoot.visible = !hide; }
@@ -329,14 +359,14 @@ export class Gunplay {
       if (!inp.down('KeyG') || this.cookT > 3.6 || !p.alive) { this.cooking = false; this.throwing = true; this.throwT = 0; this.grenadeSpawned = false; this.vm.throwT = 0; }
     }
     if (this.throwing) {
-      this.throwT += dt;
-      if (!this.grenadeSpawned && this.throwT >= 0.16) {
+      this.throwT += dt;this.vm.throwT=this.throwT;
+      if (!this.grenadeSpawned && this.throwT >= FRAG_RELEASE) {
         this.grenadeSpawned = true; this.lethals--;
         const origin = p.eyePos.clone().addScaledVector(p.right, 0.25).addScaledVector(p.forward, 0.35).add(new THREE.Vector3(0, -0.1, 0));
         const vel = p.forward.clone().multiplyScalar(19).add(new THREE.Vector3(0, 3.5, 0)).addScaledVector(p.vel, 0.6);
         this.emit({ type: 'grenade', pos: origin, vel, fuse: Math.max(0.05, 4.0 - this.cookT) });
       }
-      if (this.throwT >= 0.5) this.throwing = false;
+      if (this.throwT >= FRAG_RECOVER){this.throwing=false;this.vm.throwT=-1;}
     }
     // ---- firing
     const trigger = alive && !this.blockFire && (inp.btn(0) || inp.down('KeyF'));
@@ -359,7 +389,7 @@ export class Gunplay {
 
   private vmState(): VMState {
     const p = this.player;
-    return { ads: p.ads, sprinting: p.sprinting, speed: p.speed, grounded: p.grounded, crouching: p.crouching, sliding: p.sliding, mouseDX: this.input.mouseDX, mouseDY: this.input.mouseDY, bobPhase: p.bobPhase, time: performance.now() / 1000, climbing: !!p.climbing, lowered: (this.cooking || !!p.climbing) ? 1 : 0 };
+    return { ads: p.ads, sprinting: p.sprinting, speed: p.speed, grounded: p.grounded, crouching: p.crouching, sliding: p.sliding, mouseDX: this.input.mouseDX, mouseDY: this.input.mouseDY, bobPhase: p.bobPhase, time: performance.now() / 1000, climbing: !!p.climbing, lowered: (this.cooking || this.throwing || !!p.climbing) ? 1 : 0, cookTime:this.cooking?this.cookT:undefined };
   }
 
   startReload(continuing = false) {

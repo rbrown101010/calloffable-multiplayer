@@ -2,7 +2,7 @@
 
 [Play Modern Singularity 2](https://modern-singularity-2.vercel.app)
 
-A browser FPS with a 240 × 240 m desert refinery, ten loadouts, seven tactical AI operators, and one invite-only multiplayer lobby for up to eight people.
+A browser FPS with a 240 × 240 m desert refinery, ten loadouts, seven tactical AI operators, and one invite-only multiplayer lobby for up to 16 people.
 
 ## Play
 
@@ -24,7 +24,17 @@ Operators flank, hold angles, rush, change ranges, crouch under pressure, retrea
 - A two-floor relay station with a roof, a 64 m upper catwalk, freight overlook, drive-through overpass, five ramps, culvert shelters, 6.5 m and 4.8 m ridges, and a 3.4 m excavated quarry. New navigation links let AI reach upper routes.
 - Four medical stations, four ammunition stations, and three reusable jump pads. Supplies respawn after 22 seconds and use shared cooldowns in multiplayer.
 - ADS camera and weapon idle drift removed; raw mouse deltas, pointer recapture, FOV-matched sensitivity, and a separate ADS sensitivity slider. Recoil springs use small simulation steps to stay stable during a slow frame.
-- Auto graphics caps the internal pixel count and adapts resolution when frames slow down. Shadows use 2048 px at 30 Hz, minimap refresh is 10 Hz, and solo killcam recording is 20 Hz (disabled in multiplayer). Vehicle parts are batched; wrist/leg rig lookups reuse cached data. Full-resolution rendering remains an option under Escape > Graphics.
+- Auto graphics caps the internal pixel count and adapts resolution when frames slow down. Shadows use 2048 px at 30 Hz, minimap refresh is 10 Hz, and the legacy solo final-kill recorder is 20 Hz; multiplayer uses a separate capped 10 Hz death-replay buffer. Vehicle parts are batched; wrist/leg rig lookups reuse cached data. Full-resolution rendering remains an option under Escape > Graphics.
+
+## Local combat update
+
+- Skippable death replays in solo and multiplayer, including the match-ending death. Enter, Space or click skips; L opens the class picker during a match. The host keeps simulating while watching. Replays use recent locally observed poses, not server video recordings.
+- Class cards show both actual weapon models. Automatic rifles and SMGs have a red-dot optic, steadier recoil and faster accuracy recovery. The complete AK model replaces the old asset, which contained only a grip. Intervention damage is 82 to the body and 123 to the head; a full-health body hit is no longer lethal.
+- Visible gloved frag windup, release and follow-through; the grenade leaves the hand at 0.24 seconds and the weapon returns after 0.72 seconds.
+- Three kills earn a UAV. Five earn a random airstrike, advanced UAV or resupply. Nine earn a 25-second chopper gunner. Use 3, 4 and 5. Earned unused rewards survive death; the streak counter resets. The chopper leaves your operator vulnerable and ends if they die. Two aircraft can be active at once.
+- The host chooses a limit from 2–16 players and can kick other operators from the roster. Lowering the limit never silently ejects existing players. Kicked identities remain excluded for the current lobby, including rematches and host transfer; clearing browser identity creates a new identity.
+- Sable Reach adds four windowed, enterable outposts with stairs and roof cover, twelve road-side cover positions, and safer ladder landing decks on the refinery columns. Rust retains its compact layout.
+- Four Raven motorcycles join the six ATVs on Sable. Bikes reach 108 km/h normally and about 137 km/h with boost; ATVs reach about 68 / 94 km/h. The same exclusive-seat, collision, roadkill and host-validation rules apply.
 
 ## Loadouts
 
@@ -46,7 +56,7 @@ Operators flank, hold angles, rush, change ranges, crouch under pressure, retrea
 | Input | Action |
 |---|---|
 | WASD | Move / drive |
-| E near an ATV | Enter / exit |
+| E near a vehicle | Enter / exit |
 | Space while driving | Handbrake |
 | Shift while driving | Boost |
 | Shift | Sprint / steady scoped aim |
@@ -58,7 +68,10 @@ Operators flank, hold angles, rush, change ranges, crouch under pressure, retrea
 | R | Reload |
 | 1 / 2 / Q / wheel | Switch weapon |
 | G | Cook and throw frag |
-| 3 / 4 | UAV / airstrike when earned |
+| 3 / 4 / 5 | UAV / random reward / chopper gunner |
+| Enter / Space during killcam | Skip replay |
+| Mouse + click / F in chopper | Aim + fire cannon |
+| E in chopper | Return to operator |
 | V | Push-to-talk, when selected |
 | L | Choose class for your next respawn |
 | Tab | Scoreboard |
@@ -96,13 +109,16 @@ export TEST_URL=http://127.0.0.1:5180
 node --env-file=.env.local tools/verify-online.mjs
 # Against a deployed build:
 TEST_URL=https://your-site.vercel.app node --env-file=.env.local tools/verify-online.mjs
+node --env-file=.env.local tools/verify-combat-pass.mjs
+node tools/verify-combat-edges.mjs
+node --env-file=.env.local tools/verify-capacity.mjs
 node tools/verify-operators.mjs
 node tools/verify-expansion.mjs
 node --env-file=.env.local tools/verify-roadkills.mjs
 WIDTH=2560 HEIGHT=1440 DPR=2 node tools/benchmark.mjs
 ```
 
-The multiplayer check uses two isolated Chrome contexts with fake microphone audio. It exercises invite rejection, joining, start, pose/crouch replication, exclusive vehicle seats, host and guest driving, occupied-vehicle host transfer, real bullet damage, respawn, voice packets, forced direct-media failure and radio fallback, push-to-talk, results, rematches, and host transfer. It is not an eight-device load test or a listening test of physical microphones.
+The multiplayer check uses two isolated Chrome contexts with fake microphone audio. It exercises invite rejection, joining, start, pose/crouch replication, exclusive vehicle seats, host and guest driving, occupied-vehicle host transfer, real bullet damage, respawn, voice packets, forced direct-media failure and radio fallback, push-to-talk, results, rematches, and host transfer. It is not a 16-device load test or a listening test of physical microphones.
 
 `verify-expansion.mjs` exercises real pointer capture/re-entry, stationary aiming, steering/boost/braking, a ramp jump and landing, dismount, supplies, and launch pads. `benchmark.mjs` samples actual browser frame and CPU timings with seven bots. Set `TEST_URL` to select the server (inspection tools use port 5180 by default).
 
@@ -119,3 +135,7 @@ Code is MIT. Third-party assets retain their individual licenses. The retained R
 `npm run test:online` exercises live bullets, score, respawn, driving and two-way voice. Multiplayer browser tests use an isolated ephemeral room suffix, so they do not join the players' lobby. Set `TEST_URL` to verify the deployed build.
 
 `npm run test:multiplayer-maps` checks map selection, slow-loader synchronization, identical Rust collision layouts, room and microphone continuity, guest bullet damage and respawn, class changes, late joining, rematches between both maps, and host transfer in three isolated browser contexts.
+
+`npm run test:audio` checks short gun reports, bounded concurrent sounds, audio-node cleanup, silent microphone suppression, stale voice packet dropping, and push-to-talk key-repeat handling. This browser test runs locally without lobby credentials.
+
+The capacity test runs one rendered game with 15 independent authenticated clients sending real presence and pose traffic, and checks 17th-player rejection. It is a local protocol/load check, not 16 physical devices or 16 simultaneous microphones. The combat tests cover death replays, host continuity, skipping, final results, all reward types, chopper damage, kicks/rejoin, frag timing, tower landing and motorcycle entry. All tests use isolated room suffixes.

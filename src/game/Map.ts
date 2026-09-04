@@ -5,7 +5,7 @@ import { pbr, flat } from './Materials';
 import { fbm } from './Noise';
 import { DEG, smoothstep, clamp } from './util';
 
-export interface Ladder { id: number; center: THREE.Vector3; halfW: number; bottom: number; top: number; /** direction from climber into the ladder wall */ facing: THREE.Vector3; }
+export interface Ladder { id: number; center: THREE.Vector3; halfW: number; bottom: number; top: number; /** direction from climber into the ladder wall */ facing: THREE.Vector3; landing?:THREE.Vector3; }
 export interface Waypoint { id: number; pos: THREE.Vector3; links: number[]; ladder?: number; }
 export interface SpawnPoint { pos: THREE.Vector3; yaw: number; }
 

@@ -197,7 +197,13 @@ export class Player {
       const target = new THREE.Vector3(L.center.x, this.pos.y, L.center.z);
       this.vel.x = (target.x - this.pos.x) * 6; this.vel.z = (target.z - this.pos.z) * 6;
       // exit at top: step onto the platform
-      if (this.feetY >= L.top - 0.05 && dir > 0) { this.vel.y = 2.5; this.vel.addScaledVector(L.facing, 3.0); this.climbing = null; this.ladderExitT = 0.5; }
+      if (this.feetY >= L.top - 0.12 && dir > 0) {
+        const landing=L.landing,center=landing?.clone().add(new THREE.Vector3(0,CAP_HH_STAND+CAP_R+.05,0));
+        const free=center&&!this.physics.world.intersectionWithShape(center,{x:0,y:0,z:0,w:1},new this.physics.R.Capsule(CAP_HH_STAND,CAP_R),undefined,undefined,this.collider,this.body,c=>!!(c.collisionGroups()>>>16&G.WORLD));
+        if(landing&&free){this.teleport(landing);this.grounded=true;}
+        else {this.vel.y=2.5;this.vel.addScaledVector(L.facing,3);}
+        this.climbing=null;this.ladderExitT=.7;
+      }
       // exit at bottom
       if (this.feetY <= L.bottom + 0.05 && dir < 0) { this.climbing = null; this.ladderExitT = 0.4; }
       if (wantJump) { this.climbing = null; this.ladderExitT = 0.5; this.vel.copy(L.facing).multiplyScalar(-3.5); this.vel.y = 3.5; }

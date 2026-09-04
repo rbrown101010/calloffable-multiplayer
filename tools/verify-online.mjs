@@ -1,8 +1,14 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-import {mkdir} from 'node:fs/promises';
+import {mkdir,mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';import {join} from 'node:path';
 const base=process.env.TEST_URL||'http://127.0.0.1:5178';
-const browser=await chromium.launch({channel:'chrome',headless:true,args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream','--autoplay-policy=no-user-gesture-required']});
+// Chrome's default fake microphone is silent. Use a real signal to test speech-gated fallback.
+const fixtureDir=await mkdtemp(join(tmpdir(),'ms2-voice-')),voiceFile=join(fixtureDir,'speech.wav');
+const rate=16000,frames=rate*4,wav=Buffer.alloc(44+frames*2);
+wav.write('RIFF',0);wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(rate,24);wav.writeUInt32LE(rate*2,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(frames*2,40);
+for(let i=0;i<frames;i++){const t=i/rate,envelope=.5+.5*Math.sin(t*7);wav.writeInt16LE(Math.round(7000*envelope*(Math.sin(t*2*Math.PI*330)*.6+Math.sin(t*2*Math.PI*710)*.4)),44+i*2);}await writeFile(voiceFile,wav);
+const browser=await chromium.launch({channel:'chrome',headless:true,args:['--use-file-for-fake-audio-capture='+voiceFile,'--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream','--autoplay-policy=no-user-gesture-required']});
 const errors=[];const clients=[];const testRoom='test-'+crypto.randomUUID();
 try{
  const denied=await fetch(base+'/api/lobby',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:'wrong',name:'TEST'})});assert.equal(denied.status,403);console.log('PASS unauthenticated lobby join denied');
@@ -62,7 +68,7 @@ try{
  await a.evaluate(()=>{window.__game.player.pitch=-.005;});await a.mouse.down();
  await a.waitForFunction(()=>window.__game.player.kills>=1,undefined,{timeout:15000});await a.mouse.up();
  await b.waitForFunction(()=>window.__game.player.deaths>=1,undefined,{timeout:10000});
- console.log('PASS actual fired bullets kill remote player and synchronize score');
+ assert(await a.evaluate(()=>window.__game.shotLog.length===0&&window.__game.snaps.length===0));assert(await b.evaluate(()=>window.__game.shotLog.length===0&&window.__game.snaps.length===0));console.log('PASS actual fired bullets kill remote player, synchronize score, and do not accumulate multiplayer replay data');
  await b.waitForFunction(()=>window.__game.player.alive,undefined,{timeout:12000});console.log('PASS authoritative respawn');
  await Promise.all([a,b].map(p=>p.evaluate(()=>window.__game.online.mic.toggle())));
  await a.waitForFunction(()=>[...window.__game.online.mic.peers.values()].some(p=>p.pc.connectionState==='connected'),undefined,{timeout:20000});
@@ -73,7 +79,8 @@ try{
   await a.waitForTimeout(200);
  }
  console.log('VOICE DIAGNOSTICS',JSON.stringify(audio));assert(audio.every(v=>v.peers.some(p=>p.audio.some(s=>s.bytes>0&&s.packets>10))));console.log('PASS two-way WebRTC voice received audio packets');
- await Promise.all([a,b].map(p=>p.evaluate(()=>{for(const peer of window.__game.online.mic.peers.values())peer.pc.close();})));
+ // close() does not emit connectionstatechange; emulate the event a failed network emits.
+ await Promise.all([a,b].map(p=>p.evaluate(()=>{window.__game.online.mic.fallbackFrames=0;for(const peer of window.__game.online.mic.peers.values()){peer.pc.close();peer.pc.dispatchEvent(new Event('connectionstatechange'));}})));
  await a.waitForFunction(()=>window.__game.online.mic.fallbackFrames>=3,undefined,{timeout:15000});await b.waitForFunction(()=>window.__game.online.mic.fallbackFrames>=3,undefined,{timeout:15000});console.log('PASS voice radio fallback received and scheduled on both clients when WebRTC is blocked');
  await b.evaluate(()=>window.__game.online.mic.setPTT(true));assert.equal(await b.evaluate(()=>window.__game.online.mic.talking),false);await b.keyboard.down('v');assert.equal(await b.evaluate(()=>window.__game.online.mic.talking),true);await b.keyboard.up('v');assert.equal(await b.evaluate(()=>window.__game.online.mic.talking),false);console.log('PASS push-to-talk gates microphone tracks');
  await a.evaluate(()=>window.__game.online.finish());await b.waitForFunction(()=>window.__game.state==='ended');
@@ -91,5 +98,5 @@ try{
  console.log('ERRORS',JSON.stringify(errors));assert.equal(errors.length,0);
  await mkdir('output/playwright',{recursive:true});await a.screenshot({path:'output/playwright/online-host.png'});await b.screenshot({path:'output/playwright/online-guest.png'});
  await b.evaluate(()=>window.__game.online.finish());await b.evaluate(()=>window.__game.online.leave());
-} catch(e){console.error('FAIL',e);for(let i=0;i<clients.length;i++){console.log('CLIENT',i,await clients[i].page.evaluate(()=>{const g=window.__game;return{state:g?.state,countdown:g?.countdown,time:g?.time,online:g?.online&&{connected:g.online.connected,id:g.online.id,host:g.online.hostId,world:g.online.world,peers:[...g.online.peers.values()].map(p=>({id:p.id,name:p.name,ready:p.ready})),remotes:[...g.online.remotes.values()].map(b=>({name:b.name,pos:b.pos,health:b.health,alive:b.alive}))},player:g?.player&&{pos:g.player.pos,kills:g.player.kills,deaths:g.player.deaths,health:g.player.health,alive:g.player.alive},status:document.getElementById('lobby-status')?.textContent}}));}console.error('ERRORS',errors);process.exitCode=1;
-}finally{for(const c of clients)await c.context.close();await browser.close();}
+} catch(e){console.error('FAIL',e);for(let i=0;i<clients.length;i++){console.log('CLIENT',i,await clients[i].page.evaluate(()=>{const g=window.__game;return{voice:g?.online.mic&&{enabled:g.online.mic.enabled,talking:g.online.mic.talking,capture:g.online.mic.captureActive,lastSend:g.online.mic.lastRadioSend,fallback:g.online.mic.fallbackFrames,states:[...g.online.mic.peers.values()].map(p=>p.pc.connectionState)},state:g?.state,countdown:g?.countdown,time:g?.time,online:g?.online&&{connected:g.online.connected,id:g.online.id,host:g.online.hostId,world:g.online.world,peers:[...g.online.peers.values()].map(p=>({id:p.id,name:p.name,ready:p.ready})),remotes:[...g.online.remotes.values()].map(b=>({name:b.name,pos:b.pos,health:b.health,alive:b.alive}))},player:g?.player&&{pos:g.player.pos,kills:g.player.kills,deaths:g.player.deaths,health:g.player.health,alive:g.player.alive},status:document.getElementById('lobby-status')?.textContent}}));}console.error('ERRORS',errors);process.exitCode=1;
+}finally{for(const c of clients)await c.context.close();await browser.close();await rm(fixtureDir,{recursive:true,force:true});}

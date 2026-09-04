@@ -12,7 +12,12 @@
     "test:roadkills": "node --env-file=.env.local tools/verify-roadkills.mjs",
     "test:operators": "node tools/verify-operators.mjs",
     "test:multiplayer-flow": "node --env-file=.env.local tools/verify-multiplayer-flow.mjs",
-    "test:multiplayer-maps": "node --env-file=.env.local tools/verify-multiplayer-maps.mjs"
+    "test:multiplayer-maps": "node --env-file=.env.local tools/verify-multiplayer-maps.mjs",
+    "test:audio": "node tools/verify-audio-performance.mjs",
+    "test:combat": "node --env-file=.env.local tools/verify-combat-pass.mjs",
+    "test:capacity": "node --env-file=.env.local tools/verify-capacity.mjs",
+    "test:combat-edges": "node tools/verify-combat-edges.mjs",
+    "test:motorcycles": "node --env-file=.env.local tools/verify-motorcycles.mjs"
   },
   "devDependencies": {
     "@ai-sdk/gateway": "^4.0.72",

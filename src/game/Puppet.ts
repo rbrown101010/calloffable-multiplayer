@@ -46,7 +46,7 @@ function armIK(upper: THREE.Object3D, fore: THREE.Object3D, hand: THREE.Object3D
   const E2 = fore.getWorldPosition(_v[3]); pointBone(fore, hand, _v[0].subVectors(target, E2));
 }
 
-export interface PuppetState { pos: THREE.Vector3; feetY: number; yaw: number; aimYaw: number; aimPitch: number; speed: number; alive: boolean; deathT: number; deathDir?: THREE.Vector3; flinch?: number; crouch?: boolean; riding?: boolean; }
+export interface PuppetState { pos: THREE.Vector3; feetY: number; yaw: number; aimYaw: number; aimPitch: number; speed: number; alive: boolean; deathT: number; deathDir?: THREE.Vector3; flinch?: number; crouch?: boolean; riding?: boolean; motorcycle?:boolean; }
 
 /** An animated soldier body holding a weapon, driven by explicit state (used for bots, the player's shadow and killcam replays). */
 export class SoldierPuppet {
@@ -76,6 +76,7 @@ export class SoldierPuppet {
   async setWeapon(def: WeaponDef) {
     if (this.def === def && this.gunModel) return;
     this.def = def;
+    for(const material of this.gunMats)material.dispose();this.gunMats=[];
     if (this.gunModel) { this.gunHolder.remove(this.gunModel); this.gunModel = null; }
     const gm = await loadWeaponModel(def);
     if(this.def!==def)return;
@@ -90,6 +91,11 @@ export class SoldierPuppet {
     if (this.shadowOnly) this.setShadowOnly(true);
   }
 
+  dispose(){
+    this.mixer.stopAllAction();this.mixer.uncacheRoot(this.model);this.model.removeFromParent();this.gunPivot.removeFromParent();
+    for(const m of new Set([...this.bodyMats,...this.gunMats]))m.dispose();
+    const skeletons=new Set<THREE.Skeleton>();this.model.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)skeletons.add((o as THREE.SkinnedMesh).skeleton);});for(const s of skeletons)s.dispose();
+  }
   /** Shadow-only puppets cast shadows but write no color/depth (the player's own body). */
   setShadowOnly(on: boolean) {
     this.shadowOnly = on;
@@ -167,7 +173,7 @@ export class SoldierPuppet {
       this.legs.forEach(({thigh,shin,foot},index)=>{
         const side=index===0?-1:1;
         foot.getWorldQuaternion(footQ);
-        const target=new THREE.Vector3(side*.57,.17,0).applyQuaternion(this.model.quaternion).add(new THREE.Vector3(s.pos.x,s.feetY,s.pos.z));
+        const target=new THREE.Vector3(side*(s.motorcycle?.24:.57),.17,0).applyQuaternion(this.model.quaternion).add(new THREE.Vector3(s.pos.x,s.feetY,s.pos.z));
         const hint=new THREE.Vector3(side*.2,0,-1).applyQuaternion(this.model.quaternion);
         armIK(thigh,shin,foot,target,hint);
         foot.quaternion.copy(foot.parent!.getWorldQuaternion(parentQ).invert().multiply(footQ));foot.updateWorldMatrix(false,true);
@@ -181,8 +187,8 @@ export class SoldierPuppet {
       if(s.riding){
         // Hands meet the handlebar grips, with the legs folded around the saddle.
         const q=this.model.quaternion;
-        tR.set(.38,-.01,-.42).applyQuaternion(q).add(new THREE.Vector3(s.pos.x,s.feetY+.9,s.pos.z));
-        tL.set(-.38,-.01,-.42).applyQuaternion(q).add(new THREE.Vector3(s.pos.x,s.feetY+.9,s.pos.z));
+        tR.set(s.motorcycle?.29:.38,s.motorcycle?.11:-.01,s.motorcycle?-.66:-.42).applyQuaternion(q).add(new THREE.Vector3(s.pos.x,s.feetY+.9,s.pos.z));
+        tL.set(s.motorcycle?-.29:-.38,s.motorcycle?.11:-.01,s.motorcycle?-.66:-.42).applyQuaternion(q).add(new THREE.Vector3(s.pos.x,s.feetY+.9,s.pos.z));
       }
       armIK(B.rArm, B.rFore, B.rHand, tR, _hint.set(0, -1, 0).addScaledVector(right, 0.6).addScaledVector(fwd, -0.25));
       armIK(B.lArm, B.lFore, B.lHand, tL, _hint.set(0, -1, 0).addScaledVector(right, -0.5).addScaledVector(fwd, 0.1));

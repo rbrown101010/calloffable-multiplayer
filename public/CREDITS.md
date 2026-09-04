@@ -48,3 +48,6 @@ This is a fan-made, non-commercial tribute to the Call of Duty: Modern Warfare 2
 - Portable Generator — Poly Haven, CC0: https://polyhaven.com/a/portable_generator
 - New environment layout, operator equipment geometry, weapon grip poses, signs, terrain, vegetation, and dust are authored in this repository.
 - Covered Car — Poly Haven, CC0: https://polyhaven.com/a/covered_car
+
+## Local combat additions
+- The complete AK model, red-dot optic, frag hand geometry, Raven motorcycle, helicopter, outposts and weapon preview renders are authored in this repository. The original unused AK grip asset attribution is retained above.

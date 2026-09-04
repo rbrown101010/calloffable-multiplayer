@@ -25,6 +25,52 @@ export class AudioManager {
   private windNodes: AudioNode[] = [];
   private lowHp = 0; private beatT = 0;
   private tinnitusGain?: GainNode;
+  private replaying=false;private replaySoundDepth=0;
+  setReplayMode(on:boolean){this.replaying=on;if(on)for(const source of [...this.voices.keys()]){try{source.stop();}catch{}this.releaseVoice(source);}}
+  replaySound(play:()=>unknown){this.replaySoundDepth++;try{return play();}finally{this.replaySoundDepth--;}}
+
+  // Bound the audio graph even if a slow audio device falls behind the game loop.
+  private voices = new Map<AudioScheduledSourceNode,{spatial:boolean;score:number;end:number;nodes:AudioNode[]}>();
+  private spatialLimit = 24;
+  private voiceLimit = 64;
+
+  private reserveVoice(spatial:boolean,score:number) {
+    if(this.ctx.state!=='running'||this.master.gain.value===0||(this.replaying&&!this.replaySoundDepth))return false;
+    const candidates=[...this.voices].filter(([,v])=>!spatial||v.spatial);
+    if(this.voices.size<this.voiceLimit&&(!spatial||candidates.length<this.spatialLimit))return true;
+    const pool=spatial&&candidates.length>=this.spatialLimit?candidates:[...this.voices];
+    pool.sort((a,b)=>a[1].score-b[1].score||a[1].end-b[1].end);
+    const victim=pool[0];if(!victim||victim[1].score>score)return false;
+    try{victim[0].stop();}catch{}this.releaseVoice(victim[0]);return true;
+  }
+  private trackVoice(source:AudioScheduledSourceNode,nodes:AudioNode[],spatial:boolean,score:number,end:number) {
+    this.voices.set(source,{nodes,spatial,score,end});
+    // Keep announcer and caller onended callbacks independent of graph cleanup.
+    source.addEventListener('ended',()=>this.releaseVoice(source),{once:true});
+  }
+  private releaseVoice(source:AudioScheduledSourceNode) {
+    const voice=this.voices.get(source);if(!voice)return;
+    for(const node of voice.nodes)node.disconnect();this.voices.delete(source);
+  }
+
+  private cleanAfter(source:AudioScheduledSourceNode|null,nodes:AudioNode[]) {
+    const clean=()=>nodes.forEach(node=>node.disconnect());
+    if(source)source.addEventListener('ended',clean,{once:true});else clean();
+  }
+
+  /** Field recordings contain silence and multiple shots. Reuse just the first report. */
+  private trimGunRecording(name:string,buffer:AudioBuffer) {
+    if(!name.startsWith('shot_'))return buffer;
+    const samples=buffer.getChannelData(0),window=Math.max(1,Math.floor(buffer.sampleRate*.005)),energy:number[]=[];
+    for(let i=0;i<samples.length;i+=window){let sum=0;for(let j=i;j<Math.min(i+window,samples.length);j++)sum+=samples[j]*samples[j];energy.push(Math.sqrt(sum/window));}
+    const peak=Math.max(...energy);if(peak<.0001)return buffer;
+    const onset=Math.max(0,energy.findIndex(v=>v>peak*.15)*window-Math.floor(buffer.sampleRate*.012));
+    const duration=name.includes('bolt')?1.65:name.includes('shotgun')?1.35:1.1;
+    const length=Math.min(buffer.length-onset,Math.ceil(buffer.sampleRate*duration));
+    const trimmed=this.ctx.createBuffer(buffer.numberOfChannels,length,buffer.sampleRate),fade=Math.min(Math.floor(buffer.sampleRate*.06),length);
+    for(let ch=0;ch<buffer.numberOfChannels;ch++){const out=trimmed.getChannelData(ch);out.set(buffer.getChannelData(ch).subarray(onset,onset+length));for(let i=0;i<fade;i++)out[length-fade+i]*=1-i/fade;}
+    return trimmed;
+  }
 
   constructor() {
     this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ latencyHint: 'interactive' });
@@ -55,7 +101,7 @@ export class AudioManager {
       try {
         const res = await fetch(manifest[n]); const arr = await res.arrayBuffer();
         const buf = await this.ctx.decodeAudioData(arr);
-        this.buffers.set(n, buf);
+        this.buffers.set(n, this.trimGunRecording(n,buf));
       } catch (e) { console.warn('audio load failed', n, e); }
       done++; onProgress?.(done, names.length);
     }));
@@ -74,16 +120,19 @@ export class AudioManager {
   /** 2D (non-positional) playback. */
   play(name: string, o: PlayOpts = {}): AudioBufferSourceNode | null {
     const buf = this.buffers.get(name); if (!buf) return null;
-    const src = this.ctx.createBufferSource(); src.buffer = buf; src.loop = !!o.loop;
-    src.playbackRate.value = (o.rate ?? 1) * (o.rateVar ? 1 + rand(-o.rateVar, o.rateVar) : 1);
-    const g = this.ctx.createGain(); g.gain.value = o.vol ?? 1;
-    let node: AudioNode = src;
-    if (o.lowpass) { const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = o.lowpass; node.connect(lp); node = lp; }
-    if (o.highpass) { const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = o.highpass; node.connect(hp); node = hp; }
-    if (o.pan !== undefined) { const pn = this.ctx.createStereoPanner(); pn.pan.value = clamp(o.pan, -1, 1); node.connect(pn); node = pn; }
-    node.connect(g); g.connect(o.bus === 'gun' ? this.gunComp : o.bus === 'ui' ? this.ui : this.sfx);
-    if (o.reverb) { const rs = this.ctx.createGain(); rs.gain.value = o.reverb; g.connect(rs); rs.connect(this.reverb); }
-    src.start(this.ctx.currentTime + (o.delay ?? 0), o.offset ?? 0);
+    const score=o.bus==='ui'?4:o.bus==='gun'?3:1;
+    if(!this.reserveVoice(false,score))return null;
+    const src=this.ctx.createBufferSource();src.buffer=buf;src.loop=!!o.loop;
+    src.playbackRate.value=(o.rate??1)*(o.rateVar?1+rand(-o.rateVar,o.rateVar):1);
+    const g=this.ctx.createGain();g.gain.value=o.vol??1;const nodes:AudioNode[]=[src,g];
+    let node:AudioNode=src;
+    if(o.lowpass){const lp=this.ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=o.lowpass;node.connect(lp);node=lp;nodes.push(lp);}
+    if(o.highpass){const hp=this.ctx.createBiquadFilter();hp.type='highpass';hp.frequency.value=o.highpass;node.connect(hp);node=hp;nodes.push(hp);}
+    if(o.pan!==undefined){const pn=this.ctx.createStereoPanner();pn.pan.value=clamp(o.pan,-1,1);node.connect(pn);node=pn;nodes.push(pn);}
+    node.connect(g);g.connect(o.bus==='gun'?this.gunComp:o.bus==='ui'?this.ui:this.sfx);
+    if(o.reverb){const rs=this.ctx.createGain();rs.gain.value=o.reverb;g.connect(rs);rs.connect(this.reverb);nodes.push(rs);}
+    this.trackVoice(src,nodes,false,score,this.ctx.currentTime+(o.delay??0)+buf.duration/src.playbackRate.value);
+    src.start(this.ctx.currentTime+(o.delay??0),o.offset??0);
     return src;
   }
 
@@ -113,26 +162,30 @@ export class AudioManager {
     if (g.echo) { const far = this.pick(g.echo); this.play(far, { vol: (g.echoVol ?? 0.35), rate: 0.9, rateVar: 0.04, delay: g.echoDelay ?? 0.26, lowpass: 1800, reverb: 0.7 }); if (g.echo2) this.play(far, { vol: (g.echoVol ?? 0.35) * 0.55, rate: 0.8, delay: (g.echoDelay ?? 0.26) + 0.42, lowpass: 1000, reverb: 0.8 }); }
   }
 
-  /** Positional playback with HRTF panning and distance attenuation. */
+  /** Bounded positional playback with stereo panning and distance attenuation. */
   play3D(nameOrSet: string | string[], pos: THREE.Vector3, o: Play3DOpts = {}): AudioBufferSourceNode | null {
-    const name = this.pick(nameOrSet); const buf = this.buffers.get(name); if (!buf) return null;
-    const src = this.ctx.createBufferSource(); src.buffer = buf; src.loop = !!o.loop;
-    src.playbackRate.value = (o.rate ?? 1) * (o.rateVar ? 1 + rand(-o.rateVar, o.rateVar) : 1);
-    const p = this.makePanner(pos, o);
-    const g = this.ctx.createGain(); g.gain.value = o.vol ?? 1;
-    let node: AudioNode = src;
-    if (o.lowpass) { const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = o.lowpass; node.connect(lp); node = lp; }
-    if (o.highpass) { const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = o.highpass; node.connect(hp); node = hp; }
-    node.connect(g); g.connect(p); p.connect(this.sfx);
-    if (o.reverb !== 0) { const rs = this.ctx.createGain(); rs.gain.value = (o.reverb ?? 0.5); g.connect(rs); rs.connect(this.reverb); }
-    src.start(this.ctx.currentTime + (o.delay ?? 0));
-    src.onended = () => { try { p.disconnect(); g.disconnect(); } catch {} };
+    const name=this.pick(nameOrSet),buf=this.buffers.get(name);if(!buf)return null;
+    const distance=pos.distanceTo(this.listenerPos),ref=o.ref??4;
+    const attenuation=ref/(ref+(o.rolloff??1.1)*Math.max(0,distance-ref));
+    const score=(o.vol??1)*attenuation;
+    if(distance>(o.max??200)||score<.004||!this.reserveVoice(true,score))return null;
+    const src=this.ctx.createBufferSource();src.buffer=buf;src.loop=!!o.loop;
+    src.playbackRate.value=(o.rate??1)*(o.rateVar?1+rand(-o.rateVar,o.rateVar):1);
+    const p=this.makePanner(pos,o),g=this.ctx.createGain();g.gain.value=o.vol??1;
+    const nodes:AudioNode[]=[src,p,g];let node:AudioNode=src;
+    if(o.lowpass){const lp=this.ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=o.lowpass;node.connect(lp);node=lp;nodes.push(lp);}
+    if(o.highpass){const hp=this.ctx.createBiquadFilter();hp.type='highpass';hp.frequency.value=o.highpass;node.connect(hp);node=hp;nodes.push(hp);}
+    node.connect(g);g.connect(p);p.connect(this.sfx);
+    // Reverb follows distance and stereo placement too; distant impacts must not play at full volume.
+    if(o.reverb!==0){const rs=this.ctx.createGain();rs.gain.value=o.reverb??.5;p.connect(rs);rs.connect(this.reverb);nodes.push(rs);}
+    this.trackVoice(src,nodes,true,score,this.ctx.currentTime+(o.delay??0)+buf.duration/src.playbackRate.value);
+    src.start(this.ctx.currentTime+(o.delay??0));
     return src;
   }
 
   private makePanner(pos: THREE.Vector3, o: Play3DOpts) {
     const p = this.ctx.createPanner();
-    p.panningModel = 'HRTF'; p.distanceModel = 'inverse';
+    p.panningModel = 'equalpower'; p.distanceModel = 'inverse';
     p.refDistance = o.ref ?? 4; p.maxDistance = o.max ?? 200; p.rolloffFactor = o.rolloff ?? 1.1;
     p.coneInnerAngle = 360;
     const t = this.ctx.currentTime;
@@ -161,16 +214,18 @@ export class AudioManager {
     g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(peak, t0 + a); g.gain.exponentialRampToValueAtTime(0.0001, t0 + a + d);
   }
   private tone(freq: number, type: OscillatorType, a: number, peak: number, d: number, dest: AudioNode = this.ui, t0 = this.ctx.currentTime, slideTo?: number) {
+    if(!this.reserveVoice(false,dest===this.ui?4:dest===this.gunComp?3:1))return null;
     const o = this.ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t0);
     if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + a + d);
-    const g = this.ctx.createGain(); this.env(g, t0, a, peak, d); o.connect(g); g.connect(dest); o.start(t0); o.stop(t0 + a + d + 0.05);
+    const g = this.ctx.createGain(); this.env(g, t0, a, peak, d); o.connect(g); g.connect(dest); this.trackVoice(o,[o,g],false,dest===this.ui?4:dest===this.gunComp?3:1,t0+a+d+.05);o.start(t0); o.stop(t0 + a + d + 0.05);return o;
   }
   private noise(a: number, peak: number, d: number, filter: { type: BiquadFilterType; freq: number; q?: number; slideTo?: number }, dest: AudioNode = this.sfx, t0 = this.ctx.currentTime) {
+    if(!this.reserveVoice(false,dest===this.ui?4:dest===this.gunComp?3:1))return null;
     const s = this.ctx.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
     const f = this.ctx.createBiquadFilter(); f.type = filter.type; f.frequency.setValueAtTime(filter.freq, t0); f.Q.value = filter.q ?? 1;
     if (filter.slideTo) f.frequency.exponentialRampToValueAtTime(filter.slideTo, t0 + a + d);
-    const g = this.ctx.createGain(); this.env(g, t0, a, peak, d); s.connect(f); f.connect(g); g.connect(dest); s.start(t0); s.stop(t0 + a + d + 0.05);
-    return g;
+    const g = this.ctx.createGain(); this.env(g, t0, a, peak, d); s.connect(f); f.connect(g); g.connect(dest);this.trackVoice(s,[s,f,g],false,dest===this.ui?4:dest===this.gunComp?3:1,t0+a+d+.05); s.start(t0); s.stop(t0 + a + d + 0.05);
+    return s;
   }
 
   /** Modern Warfare style hit marker: two bright, very short ticks (headshot adds a ring). */
@@ -213,12 +268,12 @@ export class AudioManager {
   whizz(pan = 0) {
     if (this.has('whizz_1')) { this.play(this.pick(['whizz_1', 'whizz_2', 'whizz_3']), { vol: 0.7, rateVar: 0.08, pan }); return; }
     const t = this.ctx.currentTime; const p = this.ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); p.connect(this.sfx);
-    this.noise(0.01, 0.35, 0.16, { type: 'bandpass', freq: 3800, q: 3, slideTo: 900 }, p, t);
+    this.cleanAfter(this.noise(0.01, 0.35, 0.16, { type: 'bandpass', freq: 3800, q: 3, slideTo: 900 }, p, t),[p]);
   }
   ricochet(pos: THREE.Vector3) {
     if (this.has('ricochet_1')) { this.play3D(['ricochet_1', 'ricochet_2', 'ricochet_3'], pos, { vol: 0.55, rateVar: 0.08, ref: 3, rolloff: 1.3 }); return; }
     const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3, rolloff: 1.3 }); p.connect(this.sfx);
-    this.tone(2800 + rand(-600, 600), 'sine', 0.003, 0.35, 0.25, p, t, 900); this.noise(0.002, 0.3, 0.05, { type: 'highpass', freq: 3000 }, p, t);
+    this.cleanAfter(this.tone(2800 + rand(-600, 600), 'sine', 0.003, 0.35, 0.25, p, t, 900),[p]); this.noise(0.002, 0.3, 0.05, { type: 'highpass', freq: 3000 }, p, t);
   }
   /** Bullet impact by surface; uses recorded samples when present, else the synthesized fallback. */
   impactSurface(pos: THREE.Vector3, surface: string) {
@@ -228,10 +283,10 @@ export class AudioManager {
   }
   impact(pos: THREE.Vector3, metal: boolean) {
     const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3, rolloff: 1.3 }); p.connect(this.sfx);
-    if (metal) { this.tone(1800 + rand(-300, 400), 'triangle', 0.002, 0.3, 0.12, p, t); this.noise(0.002, 0.4, 0.06, { type: 'bandpass', freq: 3200, q: 2 }, p, t); }
-    else { this.noise(0.003, 0.5, 0.09, { type: 'lowpass', freq: 1200, q: 0.7 }, p, t); }
+    if (metal) { this.cleanAfter(this.tone(1800 + rand(-300, 400), 'triangle', 0.002, 0.3, 0.12, p, t),[p]); this.noise(0.002, 0.4, 0.06, { type: 'bandpass', freq: 3200, q: 2 }, p, t); }
+    else { this.cleanAfter(this.noise(0.003, 0.5, 0.09, { type: 'lowpass', freq: 1200, q: 0.7 }, p, t),[p]); }
   }
-  bodyHit(pos: THREE.Vector3) { const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3 }); p.connect(this.sfx); this.noise(0.003, 0.6, 0.08, { type: 'lowpass', freq: 500 }, p, t); this.tone(120, 'sine', 0.003, 0.4, 0.08, p, t); }
+  bodyHit(pos: THREE.Vector3) { const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3 }); p.connect(this.sfx); this.noise(0.003, 0.6, 0.08, { type: 'lowpass', freq: 500 }, p, t); this.cleanAfter(this.tone(120, 'sine', 0.003, 0.4, 0.08, p, t),[p]); }
   explosion(pos: THREE.Vector3, dist: number) {
     if (this.has('explosion_1')) {
       this.play3D(['explosion_1', 'explosion_2'], pos, { vol: 1.0, rateVar: 0.05, ref: 8, rolloff: 0.8, max: 400, reverb: 0.8 });
@@ -242,13 +297,13 @@ export class AudioManager {
     }
     const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 6, rolloff: 0.9, max: 400 }); p.connect(this.sfx);
     const rs = this.ctx.createGain(); rs.gain.value = 0.8; p.connect(rs); rs.connect(this.reverb);
-    this.noise(0.005, 1.2, 0.9, { type: 'lowpass', freq: 3000, q: 0.6, slideTo: 120 }, p, t);
+    this.cleanAfter(this.noise(0.005, 1.2, 0.9, { type: 'lowpass', freq: 3000, q: 0.6, slideTo: 120 }, p, t),[p,rs]);
     this.tone(70, 'sine', 0.005, 1.0, 0.7, p, t, 30);
     this.noise(0.002, 0.7, 0.25, { type: 'highpass', freq: 1500 }, p, t);
     if (dist < 9) this.tinnitus(1 - dist / 9);
   }
   casing(pos: THREE.Vector3) { if (this.has('casing_1')) this.play3D(['casing_1', 'casing_2', 'casing_3'], pos, { vol: 0.35, rateVar: 0.1, ref: 2, rolloff: 1.5, max: 25, reverb: 0 }); else this.grenadeBounce(pos, 0.25); }
-  grenadeBounce(pos: THREE.Vector3, strength: number) { const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3 }); p.connect(this.sfx); this.tone(900 + rand(-200, 200), 'triangle', 0.002, 0.25 * strength, 0.09, p, t); this.noise(0.002, 0.2 * strength, 0.04, { type: 'bandpass', freq: 2000, q: 2 }, p, t); }
+  grenadeBounce(pos: THREE.Vector3, strength: number) { const t = this.ctx.currentTime; const p = this.makePanner(pos, { ref: 3 }); p.connect(this.sfx); this.cleanAfter(this.tone(900 + rand(-200, 200), 'triangle', 0.002, 0.25 * strength, 0.09, p, t),[p]); this.noise(0.002, 0.2 * strength, 0.04, { type: 'bandpass', freq: 2000, q: 2 }, p, t); }
   grenadePin() { const t = this.ctx.currentTime; this.tone(2400, 'square', 0.002, 0.08, 0.03, this.sfx, t); this.noise(0.002, 0.2, 0.05, { type: 'bandpass', freq: 3000, q: 2 }, this.sfx, t + 0.04); }
   tinnitus(strength: number) {
     const t = this.ctx.currentTime;
@@ -261,14 +316,16 @@ export class AudioManager {
   /** Jet pass for the airstrike: swept band-passed noise with a doppler-like pitch drop and a low rumble. */
   jetFlyby() {
     if (this.has('jet_1')) { this.play('jet_1', { vol: 0.9, rateVar: 0.03 }); return; }
+    if(!this.reserveVoice(false,1))return;
     const t = this.ctx.currentTime; const s = this.ctx.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
     const bp = this.ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2; bp.frequency.setValueAtTime(300, t); bp.frequency.exponentialRampToValueAtTime(2600, t + 1.6); bp.frequency.exponentialRampToValueAtTime(260, t + 3.4);
     const g = this.ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.7, t + 1.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 3.6);
     const pan = this.ctx.createStereoPanner(); pan.pan.setValueAtTime(-0.9, t); pan.pan.linearRampToValueAtTime(0.9, t + 3.4);
-    s.connect(bp); bp.connect(g); g.connect(pan); pan.connect(this.sfx); s.start(t); s.stop(t + 3.8);
+    s.connect(bp); bp.connect(g); g.connect(pan); pan.connect(this.sfx);this.trackVoice(s,[s,bp,g,pan],false,1,t+3.8); s.start(t); s.stop(t + 3.8);
+    if(!this.reserveVoice(false,1))return;
     const o = this.ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(42, t + 3.2);
     const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160; const g2 = this.ctx.createGain(); g2.gain.setValueAtTime(0.0001, t); g2.gain.exponentialRampToValueAtTime(0.35, t + 1.4); g2.gain.exponentialRampToValueAtTime(0.0001, t + 3.4);
-    o.connect(lp); lp.connect(g2); g2.connect(this.sfx); o.start(t); o.stop(t + 3.6);
+    o.connect(lp); lp.connect(g2); g2.connect(this.sfx);this.trackVoice(o,[o,lp,g2],false,1,t+3.6); o.start(t); o.stop(t + 3.6);
   }
   bombWhistle(delay: number) { const t = this.ctx.currentTime + delay; this.tone(1900, 'sine', 0.05, 0.16, 1.1, this.sfx, t, 500); }
   /** Low-health heartbeat intensity 0..1 (thumps are scheduled from update()). */

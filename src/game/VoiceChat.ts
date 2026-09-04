@@ -7,16 +7,17 @@ export class VoiceChat {
   private pttHeld=false; private destroyed=false; private enabling=false;
   private audioContext?:AudioContext; private capture?:AudioWorkletNode; private source?:MediaStreamAudioSourceNode;
   private mutedPeers=new Set<string>(); private playHeads=new Map<string,number>(); private sources=new Map<string,Set<AudioBufferSourceNode>>();
+  private captureActive=false;private lastRadioSend=-Infinity;
   fallbackFrames=0; private lastFrame=new Map<string,number>();
-  unlock=()=>{void this.audioContext?.resume().catch(()=>{});for(const p of this.peers.values())p.audio.play().catch(()=>{});};
+  unlock=()=>{if(this.audioContext?.state==='suspended')void this.audioContext.resume().catch(()=>{});for(const p of this.peers.values())if(p.audio.paused&&p.audio.srcObject)p.audio.play().catch(()=>{});};
   onChange=()=>{};
   onError=(message:string)=>{};
   constructor(private id:string, private iceServers:RTCIceServer[], private send:(message:any)=>void) {
     window.addEventListener('pointerdown',this.unlock);window.addEventListener('keydown',this.keyDown);window.addEventListener('keyup',this.keyUp);window.addEventListener('blur',this.blur);
   }
-  private keyDown=(e:KeyboardEvent)=>{if(e.code==='KeyV'&&!(e.target as HTMLElement)?.matches('input,textarea')){this.pttHeld=true;this.applyMute();}};
-  private keyUp=(e:KeyboardEvent)=>{if(e.code==='KeyV'){this.pttHeld=false;this.applyMute();}};
-  private blur=()=>{this.pttHeld=false;this.applyMute();};
+  private keyDown=(e:KeyboardEvent)=>{if(e.code==='KeyV'&&this.pushToTalk&&!e.repeat&&!this.pttHeld&&!(e.target as HTMLElement)?.matches('input,textarea')){this.pttHeld=true;this.applyMute();}};
+  private keyUp=(e:KeyboardEvent)=>{if(e.code==='KeyV'&&this.pttHeld){this.pttHeld=false;this.applyMute();}};
+  private blur=()=>{if(this.pttHeld){this.pttHeld=false;this.applyMute();}};
   async toggle(){
     if(this.enabled){this.disable();return;}if(this.enabling||this.destroyed)return;this.enabling=true;
     try{
@@ -27,20 +28,30 @@ export class VoiceChat {
       await this.sync(this.peerIds);this.onChange();
     }catch(e){this.onError((e as Error).name==='NotAllowedError'?'Microphone permission was denied. Allow it in your browser to enable voice.':'No microphone is available.');}finally{this.enabling=false;}
   }
-  disable(){this.capture?.disconnect();this.source?.disconnect();this.capture=undefined;this.source=undefined;this.enabled=false;this.stream?.getTracks().forEach(t=>t.stop());this.stream=null;this.talking=false;for(const {pc}of this.peers.values())for(const sender of pc.getSenders())if(sender.track&&pc.signalingState!=='closed')void sender.replaceTrack(null).catch(()=>{});this.onChange();}
-  setPTT(on:boolean){this.pushToTalk=on;this.applyMute();}
-  private applyMute(){this.talking=this.enabled&&!this.muted&&(!this.pushToTalk||this.pttHeld);this.stream?.getAudioTracks().forEach(t=>t.enabled=this.talking);this.onChange();}
+  disable(){if(this.capture){this.capture.port.onmessage=null;this.capture.port.close();}this.captureActive=false;this.capture?.disconnect();this.source?.disconnect();this.capture=undefined;this.source=undefined;this.enabled=false;this.stream?.getTracks().forEach(t=>t.stop());this.stream=null;this.talking=false;for(const {pc}of this.peers.values())for(const sender of pc.getSenders())if(sender.track&&pc.signalingState!=='closed')void sender.replaceTrack(null).catch(()=>{});this.onChange();}
+  setPTT(on:boolean){if(this.pushToTalk===on)return;this.pushToTalk=on;this.applyMute();this.onChange();}
+  private applyMute(){const wasTalking=this.talking;this.talking=this.enabled&&!this.muted&&(!this.pushToTalk||this.pttHeld);this.stream?.getAudioTracks().forEach(t=>t.enabled=this.talking);this.updateCapture();if(wasTalking!==this.talking)this.onChange();}
   isPeerMuted(id:string){return this.mutedPeers.has(id);}
   setPeerMuted(id:string,on:boolean){if(on){this.mutedPeers.add(id);for(const s of this.sources.get(id)||[])try{s.stop();}catch{}}else this.mutedPeers.delete(id);const peer=this.peers.get(id);if(peer)peer.audio.muted=on;}
-  private async context(){if(!this.audioContext)this.audioContext=new AudioContext({sampleRate:16000,latencyHint:'interactive'});await this.audioContext.resume().catch(()=>{});return this.audioContext;}
+  private async context(){if(!this.audioContext)this.audioContext=new AudioContext({sampleRate:16000,latencyHint:'interactive'});if(this.audioContext.state==='suspended')await this.audioContext.resume().catch(()=>{});return this.audioContext;}
   private async startCapture(stream:MediaStream){
-    const ctx=await this.context();await ctx.audioWorklet.addModule('/voice-capture.js');if(this.destroyed||!this.enabled)return;
+    const ctx=await this.context();await ctx.audioWorklet.addModule('/voice-capture-v2.js');if(this.destroyed||!this.enabled||stream!==this.stream)return;
     this.source=ctx.createMediaStreamSource(stream);this.capture=new AudioWorkletNode(ctx,'radio-capture');this.source.connect(this.capture);this.capture.connect(ctx.destination);
-    this.capture.port.onmessage=({data}:{data:Uint8Array})=>{
-      if(!this.talking||this.destroyed||![...this.peers.values()].some(p=>p.pc.connectionState!=='connected'))return;
-      this.send({kind:'voice-audio',audio:btoa(String.fromCharCode(...data))});
+    this.capture.port.onmessage=({data}:{data:{audio:Uint8Array;capturedAt:number}})=>{
+      if(!this.talking||this.destroyed||!this.needsRadio())return;
+      const now=performance.now();
+      // A busy game must drop old speech, never drain an audio backlog onto the gameplay socket.
+      if(!Number.isFinite(data.capturedAt)||ctx.currentTime-data.capturedAt>.25||now-this.lastRadioSend<100)return;
+      this.lastRadioSend=now;this.send({kind:'voice-audio',audio:btoa(String.fromCharCode(...data.audio))});
     };
+    this.captureActive=false;this.updateCapture();
   }
+  private needsRadio(){return [...this.peers.values()].some(p=>p.pc.connectionState!=='connected');}
+  private updateCapture(){
+    const active=this.talking&&!this.destroyed&&this.needsRadio();
+    if(this.capture&&active!==this.captureActive){this.captureActive=active;this.capture.port.postMessage({active});}
+  }
+
   private async playRadio(from:string,data:any){
     const p=this.peers.get(from);if(p?.pc.connectionState==='connected'||this.mutedPeers.has(from)||typeof data.audio!=='string'||data.audio.length!==2732)return;
     // Accept at most 12 small frames per second per joined peer; drop delayed audio rather than queueing it.
@@ -52,7 +63,7 @@ export class VoiceChat {
     const source=ctx.createBufferSource();source.buffer=buffer;source.connect(ctx.destination);source.start(start);this.playHeads.set(from,start+buffer.duration);
     if(!this.sources.has(from))this.sources.set(from,new Set());this.sources.get(from)!.add(source);source.onended=()=>{source.disconnect();this.sources.get(from)?.delete(source);};this.fallbackFrames++;
   }
-  async sync(ids:string[]){this.peerIds=ids.filter(id=>id!==this.id);for(const [id,p]of this.peers)if(!ids.includes(id)){p.pc.close();p.audio.remove();this.peers.delete(id);}for(const id of this.peerIds){if(!this.peers.has(id)){this.make(id);if(this.id<id)await this.offer(id);}}}
+  async sync(ids:string[]){this.peerIds=ids.filter(id=>id!==this.id);for(const [id,p]of this.peers)if(!ids.includes(id)){p.pc.close();p.audio.remove();this.peers.delete(id);}for(const id of this.peerIds){if(!this.peers.has(id)){this.make(id);if(this.id<id)await this.offer(id);}}this.updateCapture();}
   private make(id:string){
     const pc=new RTCPeerConnection({iceServers:this.iceServers});const audio=document.createElement('audio');audio.autoplay=true;audio.muted=this.mutedPeers.has(id);audio.dataset.peer=id;document.body.append(audio);
     const item={pc,audio,candidates:[] as RTCIceCandidateInit[],wantOffer:false};this.peers.set(id,item);
@@ -60,7 +71,7 @@ export class VoiceChat {
     pc.onsignalingstatechange=()=>{if(pc.signalingState==='stable'&&item.wantOffer&&this.id<id)void this.offer(id);};
     pc.onicecandidate=e=>{if(e.candidate)this.send({kind:'voice',to:id,candidate:e.candidate.toJSON()});};
     pc.ontrack=e=>{audio.srcObject=e.streams[0]||new MediaStream([e.track]);audio.play().catch(()=>{});};
-    pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')this.onError('Voice is using the private radio relay for this network.');};
+    pc.onconnectionstatechange=()=>{this.updateCapture();if(pc.connectionState==='failed')this.onError('Voice is using the private radio relay for this network.');};
     return item;
   }
   private async offer(id:string){const p=this.peers.get(id);if(!p)return;if(p.pc.signalingState!=='stable'){p.wantOffer=true;return;}p.wantOffer=false;try{await p.pc.setLocalDescription(await p.pc.createOffer());this.send({kind:'voice',to:id,description:p.pc.localDescription});}catch{}}

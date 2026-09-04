@@ -7,9 +7,10 @@ import type { Game } from './Game';
 
 export type VehicleState = { id:number; p:number[]; yaw:number; pitch:number; roll:number; speed:number; vy:number; driver:string; grounded:boolean };
 export const VEHICLE_WEAPON='KESTREL ATV';
+export const vehicleName=(v:ATV)=>v.kind==='motorcycle'?'RAVEN MOTORCYCLE':VEHICLE_WEAPON;
 // Walking-speed bumps are harmless; a direct 45 km/h hit defeats a full-health operator.
 const IMPACT_MIN_SPEED=4,IMPACT_LETHAL_SPEED=12.5;
-export type ATV = { id:number; pos:THREE.Vector3; spawn:THREE.Vector3; spawnYaw:number; yaw:number; pitch:number; roll:number; speed:number; vy:number; driver:string; grounded:boolean; model:THREE.Group; wheels:THREE.Group[]; front:THREE.Group[]; body:RAPIER.RigidBody; collider:RAPIER.Collider; target?:VehicleState; lastPacket:number; abandoned:number; steer:number; boost:number; boostLocked:boolean };
+export type ATV = { id:number;kind:'atv'|'motorcycle';maxSpeed:number;boostSpeed:number; pos:THREE.Vector3; spawn:THREE.Vector3; spawnYaw:number; yaw:number; pitch:number; roll:number; speed:number; vy:number; driver:string; grounded:boolean; model:THREE.Group; wheels:THREE.Group[]; front:THREE.Group[]; body:RAPIER.RigidBody; collider:RAPIER.Collider; target?:VehicleState; lastPacket:number; abandoned:number; steer:number; boost:number; boostLocked:boolean };
 const DOWN=new THREE.Vector3(0,-1,0),UP=new THREE.Vector3(0,1,0);
 const paint=new THREE.MeshStandardMaterial({color:0x78836b,metalness:.48,roughness:.5});
 const metal=new THREE.MeshStandardMaterial({color:0x242c2d,metalness:.72,roughness:.4});
@@ -28,13 +29,15 @@ export class Vehicles {
   constructor(private g:Game){
     if(g.mapName==='RUST')return;
     for(const [x,z,yaw]of [[45,29,0],[-75,31,Math.PI/2],[49,-96,Math.PI],[92,89,Math.PI/2],[-102,100,0],[19,34,Math.PI]])this.create(x,z,yaw);
+    for(const [x,z,yaw]of [[-42,34,Math.PI/2],[43,-89,0],[80,92,Math.PI/2],[-96,-23,Math.PI]])this.create(x,z,yaw,'motorcycle');
   }
   get self(){return this.g.online?.connected?this.g.online.id:'solo';}
   get current(){return this.list.find(v=>v.driver===this.self);}
   get mounted(){return !!this.current;}
-  private create(x:number,z:number,yaw:number){
+  private create(x:number,z:number,yaw:number,kind:'atv'|'motorcycle'='atv'){
     const model=new THREE.Group(),wheels:THREE.Group[]=[],front:THREE.Group[]=[];
     const part=(mat:THREE.Material,s:number[],p:number[],rot:number[]=[])=>{const m=new THREE.Mesh(box,mat);m.scale.set(...s as [number,number,number]);m.position.set(...p as [number,number,number]);if(rot.length)m.rotation.set(...rot as [number,number,number]);m.castShadow=true;m.receiveShadow=true;model.add(m);return m;};
+    if(kind==='atv'){
     part(metal,[1.12,.22,2.05],[0,-.04,.04]);part(paint,[.72,.42,.78],[0,.19,-.56],[.12,0,0]);
     part(rubber,[.59,.16,1.04],[0,.36,.37]);part(metal,[.66,.18,.58],[0,.14,.66]);
     for(const side of [-1,1]){
@@ -54,11 +57,18 @@ export class Vehicles {
       mergeParts(wheel);wheels.push(wheel);
       part(metal,[1.35,.055,.055],[0,-.24,zw]);part(amber,[.065,.38,.065],[xw*.75,-.04,zw],[0,0,xw>0?-.25:.25]);
     }
-    mergeParts(model);
+    }else{
+      part(metal,[.25,.3,1.5],[0,.05,0]);part(paint,[.48,.4,.64],[0,.35,-.18],[.15,0,0]);part(rubber,[.38,.12,.83],[0,.51,.45]);
+      part(paint,[.38,.12,.8],[0,.26,-.9],[.12,0,0]);part(paint,[.32,.12,.7],[0,.4,.9],[-.2,0,0]);
+      part(metal,[.7,.07,.07],[0,.86,-.42]);for(const side of[-1,1]){part(rubber,[.19,.085,.1],[side*.29,.86,-.42]);part(metal,[.07,.72,.07],[side*.15,.22,-.79],[.22,0,0]);part(metal,[.07,.12,1],[side*.14,-.1,.25]);}
+      part(lamp,[.24,.18,.08],[0,.7,-.74]);part(tail,[.2,.09,.08],[0,.45,1.18]);part(metal,[.1,.1,.55],[.24,.08,.55]);
+      for(const z of[-.94,.96]){const pivot=new THREE.Group();pivot.position.set(0,-.22,z);model.add(pivot);if(z<0)front.push(pivot);const wheel=new THREE.Group();pivot.add(wheel);const t=new THREE.Mesh(tire,rubber),h=new THREE.Mesh(hub,metal);t.scale.x=.6;h.scale.x=.64;t.castShadow=h.castShadow=true;wheel.add(t,h);for(let k=0;k<8;k++){const spoke=new THREE.Mesh(box,metal);spoke.scale.set(.06,.055,.67);spoke.rotation.x=k*Math.PI/8;wheel.add(spoke);}mergeParts(wheel);wheels.push(wheel);}
+    }
+    mergeParts(model);model.name=kind==='motorcycle'?'RAVEN MOTORCYCLE':'KESTREL ATV';
     const y=this.g.map.groundHeight(x,z)+.7,pos=new THREE.Vector3(x,y,z),R=this.g.physics.R;
     const body=this.g.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(x,y,z));
-    const collider=this.g.physics.world.createCollider(R.ColliderDesc.cuboid(.66,.24,1.14).setCollisionGroups(cg(G.VEHICLE)),body);
-    const v:ATV={id:this.list.length,pos,spawn:pos.clone(),spawnYaw:yaw,yaw,pitch:0,roll:0,speed:0,vy:0,driver:'',grounded:true,model,wheels,front,body,collider,lastPacket:0,abandoned:0,steer:0,boost:1,boostLocked:false};
+    const collider=this.g.physics.world.createCollider(R.ColliderDesc.cuboid(kind==='motorcycle'?.3:.66,.24,1.14).setCollisionGroups(cg(G.VEHICLE)),body);
+    const v:ATV={id:this.list.length,kind,maxSpeed:kind==='motorcycle'?30:19,boostSpeed:kind==='motorcycle'?38:26,pos,spawn:pos.clone(),spawnYaw:yaw,yaw,pitch:0,roll:0,speed:0,vy:0,driver:'',grounded:true,model,wheels,front,body,collider,lastPacket:0,abandoned:0,steer:0,boost:1,boostLocked:false};
     this.g.physics.setOwner(collider,{vehicle:v,surface:'metal'});this.g.scene.add(model);this.list.push(v);this.place(v);
   }
   reset(){this.detach();this.contacts.clear();for(const v of this.list){v.pos.copy(v.spawn);v.yaw=v.spawnYaw;v.pitch=v.roll=v.speed=v.vy=0;v.driver='';v.target=undefined;v.grounded=true;v.boost=1;v.boostLocked=false;this.place(v);}}
@@ -69,12 +79,12 @@ export class Vehicles {
     const v=this.list[s?.id];if(!this.g.online?.isHost||!v||v.driver!==from||!this.valid(s))return;
     const now=performance.now(),elapsed=(now-v.lastPacket)/1000,dt=clamp(elapsed,.066,1);
     const delta=new THREE.Vector3(...s.p as [number,number,number]).sub(v.pos);
-    if(delta.length()>34*dt+2)return;
+    if(delta.length()>(v.boostSpeed+8)*dt+2)return;
     // Validate impacts along the accepted movement, never from client-supplied damage/target IDs.
     // Large packet gaps cannot sweep through operators who may have just spawned into the path.
-    const speed=Math.min(26,Math.max(Math.abs(v.speed),Math.abs(s.speed)),Math.hypot(delta.x,delta.z)/dt+2);
+    const speed=Math.min(v.boostSpeed,Math.max(Math.abs(v.speed),Math.abs(s.speed)),Math.hypot(delta.x,delta.z)/dt+2);
     if(elapsed<=.35)this.sweep(v,delta,new THREE.Quaternion().setFromAxisAngle(UP,s.yaw),speed,.12);
-    v.lastPacket=now;v.target={...s,speed:clamp(s.speed,-7,26),driver:from};this.copy(v,v.target);
+    v.lastPacket=now;v.target={...s,speed:clamp(s.speed,-7,v.boostSpeed),driver:from};this.copy(v,v.target);
   }
   authorize(who:string,id:number,action:'enter'|'exit'){
     const v=this.list[id],e=who===this.self?this.g.player:this.g.online?.entity(who);if(!v||!e)return false;
@@ -109,15 +119,15 @@ export class Vehicles {
       this.place(v);for(const w of v.wheels)w.rotation.x-=v.speed*dt/.42;for(const f of v.front)f.rotation.y=v.steer*.4;
     }
     this.engineSound(current,canControl);
-    if(current){this.rider(current,dt,canControl);this.hud(current);}else{const near=this.list.find(v=>!v.driver&&Math.abs(v.speed)<3&&v.pos.distanceTo(p.pos)<3.5);this.hud(undefined,canControl&&near?'E  ·  DRIVE KESTREL ATV':'');}
+    if(current){this.rider(current,dt,canControl);this.hud(current);}else{const near=this.list.find(v=>!v.driver&&Math.abs(v.speed)<3&&v.pos.distanceTo(p.pos)<3.5);this.hud(undefined,canControl&&near?'E  ·  DRIVE '+vehicleName(near):'');}
   }
   private drive(v:ATV,dt:number,throttle:number,steer:number,brake:boolean,boost:boolean){
     v.steer=damp(v.steer,steer,9,dt);if(!boost)v.boostLocked=false;const turbo=boost&&!v.boostLocked&&throttle>0&&v.boost>.03;
     v.boost=clamp(v.boost+(turbo?-.25:.16)*dt,0,1);if(v.boost<=.03)v.boostLocked=true;
-    const limit=turbo?26:19;
-    if(throttle>0&&v.speed<limit)v.speed=Math.min(limit,v.speed+(turbo?22:15)*dt);
+    const limit=turbo?v.boostSpeed:v.maxSpeed;
+    if(throttle>0&&v.speed<limit)v.speed=Math.min(limit,v.speed+(v.kind==='motorcycle'?(turbo?29:21):(turbo?22:15))*dt);
     else if(throttle<0)v.speed=Math.max(-7,v.speed-15*dt);
-    v.speed=damp(v.speed,0,brake?6:throttle? .12:1.15,dt);if(v.speed>limit)v.speed=damp(v.speed,limit,1.5,dt);v.speed=clamp(v.speed,-7,26);
+    v.speed=damp(v.speed,0,brake?6:throttle? .12:1.15,dt);if(v.speed>limit)v.speed=damp(v.speed,limit,1.5,dt);v.speed=clamp(v.speed,-7,v.boostSpeed);
     const turn=clamp(Math.abs(v.speed)/5,0,1)*1.25*(v.speed<0?-1:1)*(v.grounded?1:.18);
     v.yaw+=v.steer*turn*dt;
     const dx=-Math.sin(v.yaw)*v.speed*dt,dz=-Math.cos(v.yaw)*v.speed*dt;
@@ -135,7 +145,7 @@ export class Vehicles {
     if(v.grounded&&floor>=v.pos.y-.22&&floor<v.pos.y+.55){v.pos.y=floor;v.vy=clamp((v.pos.y-oldY)/Math.max(.001,dt),-8,12);}
     else{v.grounded=false;v.vy-=19*dt;v.pos.y+=v.vy*dt;if(v.pos.y<=floor&&v.vy<=0){v.pos.y=floor;v.vy=0;v.grounded=true;}}
     const pitch=v.grounded?Math.atan2(front-rear,1.74):clamp(v.vy*.026,-.35,.35);
-    const roll=v.grounded?Math.atan2(right-left,1.16)-v.steer*v.speed*.005:0;
+    const roll=v.grounded?Math.atan2(right-left,1.16)-v.steer*v.speed*(v.kind==='motorcycle'?.014:.005):0;
     v.pitch=damp(v.pitch,clamp(pitch,-.55,.55),12,dt);v.roll=damp(v.roll,clamp(roll,-.45,.45),10,dt);
     // Keep shape queries in sync between the small suspension steps.
     v.body.setTranslation(v.pos,true);v.body.setRotation(q,true);v.body.setNextKinematicTranslation(v.pos);
@@ -165,7 +175,7 @@ export class Vehicles {
           if(g.online?.connected){
             if(g.online.isHost)entry.pass=g.online.vehicleImpact(v.id,target,amount,from);
             else entry.pass=amount>=target.health; // Predict traversal only; health and score remain host-owned.
-          }else{entry.pass=target.takeDamage(amount,driver,'body',VEHICLE_WEAPON,from);this.impactFeedback(v.driver,point,entry.pass);}
+          }else{entry.pass=target.takeDamage(amount,driver,'body',vehicleName(v),from);this.impactFeedback(v.driver,point,entry.pass);}
         }
       }
       if(!target.alive||contacts.get(target)?.pass)continue;
@@ -179,7 +189,7 @@ export class Vehicles {
   }
   private copy(v:ATV,s:VehicleState){v.pos.fromArray(s.p);v.yaw=s.yaw;v.pitch=s.pitch;v.roll=s.roll;v.speed=s.speed;v.vy=s.vy;v.grounded=s.grounded;}
   private place(v:ATV){v.model.position.copy(v.pos);v.model.rotation.set(v.pitch,v.yaw,v.roll,'YXZ');v.body.setTranslation(v.pos,true);v.body.setNextKinematicTranslation(v.pos);const q=new THREE.Quaternion().setFromAxisAngle(UP,v.yaw);v.body.setRotation(q,true);v.body.setNextKinematicRotation(q);}
-  private attach(v:ATV){const g=this.g;this.previous=v.id;this.orbit=0;this.elevation=.27;this.cameraPos.copy(v.pos).add(new THREE.Vector3(Math.sin(v.yaw)*5,2.8,Math.cos(v.yaw)*5));g.player.setCrouch(false);g.player.setMounted(true);g.player.ads=0;g.player.climbing=null;g.gunplay.adsLatched=g.gunplay.adsHeld=false;g.playerPuppet?.setShadowOnly(false);g.vm.root.visible=false;el('weapon').classList.add('hidden');el('streaks').classList.add('hidden');g.hud.centerMsg('KESTREL ATV');this.startEngine();}
+  private attach(v:ATV){const g=this.g;this.previous=v.id;this.orbit=0;this.elevation=.27;this.cameraPos.copy(v.pos).add(new THREE.Vector3(Math.sin(v.yaw)*5,2.8,Math.cos(v.yaw)*5));g.player.setCrouch(false);g.player.setMounted(true);g.player.ads=0;g.player.climbing=null;g.gunplay.adsLatched=g.gunplay.adsHeld=false;g.playerPuppet?.setShadowOnly(false);g.vm.root.visible=false;el('weapon').classList.add('hidden');el('streaks').classList.add('hidden');g.hud.centerMsg(vehicleName(v));this.startEngine();}
   detach(){if(this.previous<0)return;if(this.engine){this.engine.osc.stop();this.engine.harmonic.stop();this.engine.gain.disconnect();this.engine=undefined;}const g=this.g,v=this.list[this.previous];g.player.setMounted(false);g.player.vel.set(0,0,0);if(v&&g.player.alive){const exit=this.exitPoint(v);g.player.teleport(exit);g.player.yaw=v.yaw+this.orbit;g.player.pitch=0;g.player.eyeCur=1.62;}g.playerPuppet?.setShadowOnly(true);g.vm.root.visible=g.player.alive;this.previous=-1;el('weapon').classList.remove('hidden');el('streaks').classList.remove('hidden');this.hud();}
   private exitPoint(v:ATV){const physics=this.g.physics;for(const a of [Math.PI/2,-Math.PI/2,Math.PI,0,Math.PI*.75,-Math.PI*.75]){
       const x=v.pos.x+Math.sin(v.yaw+a)*2.4,z=v.pos.z+Math.cos(v.yaw+a)*2.4;
@@ -205,7 +215,7 @@ export class Vehicles {
     osc.connect(filter);harmonic.connect(filter);filter.connect(gain);gain.connect(this.g.audio.sfx);osc.start();harmonic.start();this.engine={osc,harmonic,gain,filter};
   }
   private engineSound(v:ATV|undefined,enabled:boolean){if(!this.engine||!v)return;const e=this.engine,t=this.g.audio.ctx.currentTime,rpm=35+Math.abs(v.speed)*3.4+(this.g.input.down('KeyW')?12:0);e.osc.frequency.setTargetAtTime(rpm,t,.12);e.harmonic.frequency.setTargetAtTime(rpm*2.01,t,.12);e.filter.frequency.setTargetAtTime(250+Math.abs(v.speed)*18,t,.1);e.gain.gain.setTargetAtTime(enabled?.033+Math.abs(v.speed)*.0012:0,t,.1);}
-  private hud(v?:ATV,hint=''){const text=v?`${Math.round(Math.abs(v.speed)*3.6)} KM/H · ${v.grounded?'KESTREL ATV':'AIRBORNE'}|${Math.round(v.boost*100)}`:hint;if(text===this.lastHud)return;this.lastHud=text;const node=el('vehicle-hud');node.classList.toggle('hidden',!text);node.innerHTML=v?`<div class="vehicle-name">KESTREL <span>LIGHT RECON ATV</span></div><div class="vehicle-speed">${Math.round(Math.abs(v.speed)*3.6)}<small>KM/H</small></div><div class="vehicle-boost"><i style="width:${v.boost*100}%"></i></div><div class="vehicle-keys">WASD DRIVE &nbsp; SPACE BRAKE &nbsp; SHIFT BOOST &nbsp; E EXIT</div>${!v.grounded?'<b class="airborne">AIRBORNE</b>':''}`:`<div class="vehicle-prompt">${hint}</div>`;}
+  private hud(v?:ATV,hint=''){const text=v?`${Math.round(Math.abs(v.speed)*3.6)} KM/H · ${v.grounded?vehicleName(v):'AIRBORNE'}|${Math.round(v.boost*100)}`:hint;if(text===this.lastHud)return;this.lastHud=text;const node=el('vehicle-hud');node.classList.toggle('hidden',!text);node.innerHTML=v?`<div class="vehicle-name">${v.kind==='motorcycle'?'RAVEN <span>FAST ATTACK MOTORCYCLE</span>':'KESTREL <span>LIGHT RECON ATV</span>'}</div><div class="vehicle-speed">${Math.round(Math.abs(v.speed)*3.6)}<small>KM/H</small></div><div class="vehicle-boost"><i style="width:${v.boost*100}%"></i></div><div class="vehicle-keys">WASD DRIVE &nbsp; SPACE BRAKE &nbsp; SHIFT BOOST &nbsp; E EXIT</div>${!v.grounded?'<b class="airborne">AIRBORNE</b>':''}`:`<div class="vehicle-prompt">${hint}</div>`;}
 }
 
 function mergeParts(group:THREE.Group){
