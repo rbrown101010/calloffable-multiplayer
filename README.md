@@ -1,4 +1,9 @@
-# RUST — Free-For-All
+# RUST — Free-For-All · Multiplayer
+
+> **This is the multiplayer build** of [calloffable-public](https://github.com/rbrown101010/calloffable-public): one password-protected lobby for up to 8 players, empty slots filled by the existing bots, and CoD-style proximity voice chat.
+> **Status: design complete, implementation not started.** The full plan, protocol, authority model and milestones are in [MULTIPLAYER.md](MULTIPLAYER.md). Server secrets are listed by name in [.env.example](.env.example).
+>
+> Everything below describes the single-player game this repo starts from. It still runs as-is with `npm run dev`.
 
 A browser-based, Call of Duty–style first-person shooter set on a faithful recreation of the classic **Rust** map: the oil derrick tower, shipping containers, pump-house bunker, oil tank, the big pipe, ladders, stairs and a desert horizon lit by a real HDRI sky.
 
