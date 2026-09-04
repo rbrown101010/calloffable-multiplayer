@@ -42,18 +42,26 @@ export class Input {
     window.addEventListener('contextmenu', (e) => { if (this.locked || this.forceLocked) e.preventDefault(); });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.el;
-      if (!this.locked) { this.keys.clear(); this.buttons.clear(); }
+      this.reset();
       this.onLockChange?.(this.locked);
     });
-    window.addEventListener('blur', () => { this.keys.clear(); this.buttons.clear(); });
+    window.addEventListener('blur', () => this.reset());
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  reset() {
+    this.keys.clear(); this.buttons.clear(); this.endFrame();
+    this.lastX = this.lastY = -1; this.wheelAcc = 0;
+  }
+
   lock() {
+    if (this.locked || this.forceLocked) return;
+    this.reset();
+    const fallback = () => { try { const p = this.el.requestPointerLock(); p?.catch(() => {}); } catch {} };
     try {
       const p: any = (this.el as any).requestPointerLock({ unadjustedMovement: true });
-      if (p && typeof p.catch === 'function') p.catch(() => this.el.requestPointerLock());
-    } catch { this.el.requestPointerLock(); }
+      if (p && typeof p.catch === 'function') p.catch(fallback);
+    } catch { fallback(); }
   }
   unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
 

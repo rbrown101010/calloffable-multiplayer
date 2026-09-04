@@ -18,7 +18,7 @@ export class Grenades {
   throw(pos: THREE.Vector3, vel: THREE.Vector3, fuse: number, owner: any) {
     const R = this.physics.R;
     const body = this.physics.world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(pos.x, pos.y, pos.z).setLinvel(vel.x, vel.y, vel.z).setAngvel({ x: Math.random() * 12, y: Math.random() * 12, z: Math.random() * 12 }).setLinearDamping(0.12).setAngularDamping(0.5).setCcdEnabled(true));
-    this.physics.world.createCollider(R.ColliderDesc.ball(0.045).setRestitution(0.38).setFriction(0.55).setDensity(3).setCollisionGroups(cg(G.GRENADE, G.WORLD | G.PLAYER | G.BOT)), body);
+    this.physics.world.createCollider(R.ColliderDesc.ball(0.045).setRestitution(0.38).setFriction(0.55).setDensity(3).setCollisionGroups(cg(G.GRENADE, G.WORLD | G.VEHICLE | G.PLAYER | G.BOT)), body);
     const mesh = this.proto.clone(); mesh.position.copy(pos); this.scene.add(mesh);
     this.list.push({ body, mesh, fuse, owner, lastSpeed: vel.length(), age: 0 });
   }

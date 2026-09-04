@@ -15,6 +15,8 @@ function loadSoldier() {
 }
 
 const _right = new THREE.Vector3(), _fwd = new THREE.Vector3(), _tR = new THREE.Vector3(), _tL = new THREE.Vector3(), _hint = new THREE.Vector3();
+const wristBasis = [new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(1,0,0),new THREE.Vector3(0,0,-1),new THREE.Vector3(0,1,0))),new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0,-1,0),new THREE.Vector3(1,0,0),new THREE.Vector3(0,0,1)))];
+const wristWorld = new THREE.Quaternion(), wristParent = new THREE.Quaternion();
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const _boneDirection = new THREE.Vector3(), _boneAxis = new THREE.Vector3();
 const _v = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(() => new THREE.Vector3());
@@ -44,7 +46,7 @@ function armIK(upper: THREE.Object3D, fore: THREE.Object3D, hand: THREE.Object3D
   const E2 = fore.getWorldPosition(_v[3]); pointBone(fore, hand, _v[0].subVectors(target, E2));
 }
 
-export interface PuppetState { pos: THREE.Vector3; feetY: number; yaw: number; aimYaw: number; aimPitch: number; speed: number; alive: boolean; deathT: number; deathDir?: THREE.Vector3; flinch?: number; crouch?: boolean; }
+export interface PuppetState { pos: THREE.Vector3; feetY: number; yaw: number; aimYaw: number; aimPitch: number; speed: number; alive: boolean; deathT: number; deathDir?: THREE.Vector3; flinch?: number; crouch?: boolean; riding?: boolean; }
 
 /** An animated soldier body holding a weapon, driven by explicit state (used for bots, the player's shadow and killcam replays). */
 export class SoldierPuppet {
@@ -52,6 +54,7 @@ export class SoldierPuppet {
   gunPivot = new THREE.Group(); gunHolder = new THREE.Group(); muzzle = new THREE.Object3D(); gunModel: THREE.Object3D | null = null;
   gripR = new THREE.Vector3(0, -0.08, 0.13); gripL = new THREE.Vector3(0, -0.05, -0.1);
   bones: { rArm?: THREE.Object3D; rFore?: THREE.Object3D; rHand?: THREE.Object3D; lArm?: THREE.Object3D; lFore?: THREE.Object3D; lHand?: THREE.Object3D; spine1?: THREE.Object3D; spine2?: THREE.Object3D; neck?: THREE.Object3D; head?: THREE.Object3D; rShoulder?: THREE.Object3D } = {};
+  private legs: { thigh:THREE.Object3D; shin:THREE.Object3D; foot:THREE.Object3D }[]=[];
   private scene!: THREE.Scene; private _e = new THREE.Euler(); private _q = new THREE.Quaternion(); private _p = new THREE.Vector3(); private _off = new THREE.Vector3();
   def: WeaponDef | null = null; shadowOnly = false; private crouchBlend = 0; private gunMats: THREE.Material[] = []; private bodyMats: THREE.Material[] = []; private fingerRest = new Map<THREE.Object3D,THREE.Quaternion>();
 
@@ -65,6 +68,7 @@ export class SoldierPuppet {
     p.gunPivot.add(p.gunHolder); p.gunHolder.add(p.muzzle); scene.add(p.gunPivot); p.scene = scene;
     p.model.traverse((o) => { const n = o.name; if (n === 'mixamorigRightArm') p.bones.rArm = o; else if (n === 'mixamorigRightForeArm') p.bones.rFore = o; else if (n === 'mixamorigRightHand') p.bones.rHand = o; else if (n === 'mixamorigLeftArm') p.bones.lArm = o; else if (n === 'mixamorigLeftForeArm') p.bones.lFore = o; else if (n === 'mixamorigLeftHand') p.bones.lHand = o; else if (n === 'mixamorigSpine1') p.bones.spine1 = o; else if (n === 'mixamorigSpine2') p.bones.spine2 = o; else if (n === 'mixamorigNeck') p.bones.neck = o; else if (n === 'mixamorigHead') p.bones.head = o; else if (n === 'mixamorigRightShoulder') p.bones.rShoulder = o; });
     p.model.traverse(o=>{if(/Hand(Thumb|Index|Middle|Ring|Pinky)[123]$/.test(o.name))p.fingerRest.set(o,o.quaternion.clone());});
+    for(const side of ['Left','Right'])p.legs.push({thigh:p.model.getObjectByName('mixamorig'+side+'UpLeg')!,shin:p.model.getObjectByName('mixamorig'+side+'Leg')!,foot:p.model.getObjectByName('mixamorig'+side+'Foot')!});
     scene.add(p.model);
     return p;
   }
@@ -89,7 +93,7 @@ export class SoldierPuppet {
   /** Shadow-only puppets cast shadows but write no color/depth (the player's own body). */
   setShadowOnly(on: boolean) {
     this.shadowOnly = on;
-    for (const m of [...this.bodyMats, ...this.gunMats]) { (m as any).colorWrite = !on; (m as any).depthWrite = !on; m.needsUpdate = true; }
+    for (const m of [...this.bodyMats, ...this.gunMats]) { (m as any).colorWrite = !on; (m as any).depthWrite = !on; }
   }
   setVisible(v: boolean) { this.model.visible = v; this.gunPivot.visible = v; }
   /** Slight per-operator uniform tint so bots are distinguishable. */
@@ -114,12 +118,8 @@ export class SoldierPuppet {
 
   private gripHand(hand:THREE.Object3D,left:boolean) {
     // Set the wrist in weapon space. The trigger hand is vertical; the support palm cups the fore-end.
-    const basis=new THREE.Matrix4().makeBasis(
-      left?new THREE.Vector3(0,-1,0):new THREE.Vector3(1,0,0),
-      left?new THREE.Vector3(1,0,0):new THREE.Vector3(0,0,-1),
-      left?new THREE.Vector3(0,0,1):new THREE.Vector3(0,1,0));
-    const world=this.gunPivot.quaternion.clone().multiply(new THREE.Quaternion().setFromRotationMatrix(basis));
-    hand.quaternion.copy(hand.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(world));
+    wristWorld.copy(this.gunPivot.quaternion).multiply(wristBasis[left?1:0]);
+    hand.quaternion.copy(hand.parent!.getWorldQuaternion(wristParent).invert().multiply(wristWorld));
     for(const [bone,rest]of this.fingerRest){if(!bone.name.includes(left?'Left':'Right'))continue;bone.quaternion.copy(rest);
       const thumb=bone.name.includes('Thumb'),index=bone.name.includes('Index'),joint=Number(bone.name.slice(-1));
       bone.rotateZ(thumb ? .38 : (!left&&index ? .45 : (joint===1 ? .92 : 1.1)));
@@ -149,12 +149,12 @@ export class SoldierPuppet {
       this.model.updateWorldMatrix(true, true); this.placeGun({ ...s, aimPitch: -0.6 + e * -0.6 }); this.gunPivot.position.y = Math.max(this.gunPivot.position.y - e * 0.9, s.feetY + 0.12);
       return;
     }
-    const walk = clamp(s.speed / 3.2, 0, 1), run = clamp((s.speed - 3.2) / 3.2, 0, 1);
+    const walk = s.riding ? 0 : clamp(s.speed / 3.2, 0, 1), run = s.riding ? 0 : clamp((s.speed - 3.2) / 3.2, 0, 1);
     this.setAnim('Idle', 1 - walk, dt); this.setAnim('Walk', walk * (1 - run), dt); this.setAnim('Run', run, dt);
     this.mixer.update(dt);
-    this.crouchBlend = damp(this.crouchBlend,s.crouch?1:0,12,dt);
+    this.crouchBlend = damp(this.crouchBlend,s.riding?1.35:s.crouch?1:0,12,dt);
     this.model.position.set(s.pos.x, s.feetY - this.crouchBlend*.4, s.pos.z); this.model.rotation.set(0, s.yaw + MODEL_YAW, 0);
-    for(const side of ['Left','Right']) { const thigh=this.model.getObjectByName('mixamorig'+side+'UpLeg'),shin=this.model.getObjectByName('mixamorig'+side+'Leg'); if(thigh)thigh.rotateX(-this.crouchBlend*.72);if(shin)shin.rotateX(this.crouchBlend*1.15); }
+    for(const {thigh,shin} of this.legs) { if(!s.riding){if(thigh)thigh.rotateX(-this.crouchBlend*.72);if(shin)shin.rotateX(this.crouchBlend*1.15);} }
     // torso twist + head look toward the aim; flinch pitches the chest back briefly
     const dYaw = clamp(wrapAngle(s.aimYaw - s.yaw), -1.2, 1.2); const pitch = clamp(s.aimPitch, -0.9, 0.9); const fl = s.flinch ?? 0;
     const B = this.bones;
@@ -162,10 +162,28 @@ export class SoldierPuppet {
     if (B.spine2) { B.spine2.rotateY(dYaw * 0.35); B.spine2.rotateX(pitch * 0.35 + fl * 0.3); }
     if (B.head) { B.head.rotateY(dYaw * 0.3); B.head.rotateX(pitch * 0.4); }
     this.model.updateWorldMatrix(true, true);
+    if(s.riding){
+      const footQ=new THREE.Quaternion(),parentQ=new THREE.Quaternion();
+      this.legs.forEach(({thigh,shin,foot},index)=>{
+        const side=index===0?-1:1;
+        foot.getWorldQuaternion(footQ);
+        const target=new THREE.Vector3(side*.57,.17,0).applyQuaternion(this.model.quaternion).add(new THREE.Vector3(s.pos.x,s.feetY,s.pos.z));
+        const hint=new THREE.Vector3(side*.2,0,-1).applyQuaternion(this.model.quaternion);
+        armIK(thigh,shin,foot,target,hint);
+        foot.quaternion.copy(foot.parent!.getWorldQuaternion(parentQ).invert().multiply(footQ));foot.updateWorldMatrix(false,true);
+      });
+    }
     this.placeGun(s);
+    this.gunPivot.visible=this.model.visible&&!s.riding;
     if (B.rArm && B.rFore && B.rHand && B.lArm && B.lFore && B.lHand) {
       const right = _right.set(1, 0, 0).applyQuaternion(this.model.quaternion); const fwd = _fwd.set(0, 0, -1).applyQuaternion(this.model.quaternion);
       const tR = this.gunHolder.localToWorld(_tR.copy(this.gripR)); const tL = this.gunHolder.localToWorld(_tL.copy(this.gripL));
+      if(s.riding){
+        // Hands meet the handlebar grips, with the legs folded around the saddle.
+        const q=this.model.quaternion;
+        tR.set(.38,-.01,-.42).applyQuaternion(q).add(new THREE.Vector3(s.pos.x,s.feetY+.9,s.pos.z));
+        tL.set(-.38,-.01,-.42).applyQuaternion(q).add(new THREE.Vector3(s.pos.x,s.feetY+.9,s.pos.z));
+      }
       armIK(B.rArm, B.rFore, B.rHand, tR, _hint.set(0, -1, 0).addScaledVector(right, 0.6).addScaledVector(fwd, -0.25));
       armIK(B.lArm, B.lFore, B.lHand, tL, _hint.set(0, -1, 0).addScaledVector(right, -0.5).addScaledVector(fwd, 0.1));
       this.gripHand(B.rHand,false);this.gripHand(B.lHand,true);

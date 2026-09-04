@@ -21,9 +21,10 @@ const CAP_R = 0.36, CAP_HH_STAND = 0.54, CAP_HH_CROUCH = 0.2;
 export class Player {
   body: RAPIER.RigidBody; collider: RAPIER.Collider; cc: RAPIER.KinematicCharacterController;
   pos = new THREE.Vector3(); vel = new THREE.Vector3();
-  yaw = 0; pitch = 0; sens = 1.0;
+  yaw = 0; pitch = 0; sens = 1.0; adsSensitivity = 1;
   rig = new THREE.Object3D();
   camera: THREE.PerspectiveCamera;
+  mounted = false;
   grounded = false; wasGrounded = false; groundedTime = 0;
   sprinting = false; crouching = false; sliding = false; slideT = 0; slideDir = new THREE.Vector3();
   ads = 0; adsBlend = 0;
@@ -43,13 +44,13 @@ export class Player {
   onDeath?: (attacker: any, weapon: string, headshot: boolean) => void;
   name = 'RILEY'; kills = 0; deaths = 0; score = 0; streak = 0; colliderHandles = new Set<number>();
   jumpCooldown = 0; airTime = 0; breathHold = 0; stamina = 1; deathT = 0; stuckT = 0; onStuck?: () => void;
-  private _f = new THREE.Vector3(); private _r = new THREE.Vector3(); private _tmp = new THREE.Vector3();
+  private _seatEye = new THREE.Vector3(); private _f = new THREE.Vector3(); private _r = new THREE.Vector3(); private _tmp = new THREE.Vector3();
 
   constructor(private physics: Physics, private input: Input, camera: THREE.PerspectiveCamera, private ladders: Ladder[]) {
     this.camera = camera; this.rig.add(camera);
     const R = physics.R;
     this.body = physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(0, 5, 0));
-    this.collider = physics.world.createCollider(R.ColliderDesc.capsule(CAP_HH_STAND, CAP_R).setCollisionGroups(cg(G.PLAYER, G.WORLD | G.BOT | G.GRENADE | G.DEBRIS)).setFriction(0), this.body);
+    this.collider = physics.world.createCollider(R.ColliderDesc.capsule(CAP_HH_STAND, CAP_R).setCollisionGroups(cg(G.PLAYER, G.WORLD | G.VEHICLE | G.BOT | G.GRENADE | G.DEBRIS)).setFriction(0), this.body);
     physics.setOwner(this.collider, { entity: this, part: 'body', player: this });
     this.colliderHandles.add(this.collider.handle);
     this.cc = physics.world.createCharacterController(0.03);
@@ -62,7 +63,7 @@ export class Player {
   }
 
   get feetY() { return this.pos.y - (this.crouching ? CAP_HH_CROUCH : CAP_HH_STAND) - CAP_R; }
-  get eyePos() { return this.rig.position; }
+  get eyePos() { return this.mounted ? this._seatEye.copy(this.pos).add(new THREE.Vector3(0,.48,0)) : this.rig.position; }
   get forward() { return this._f.set(0, 0, -1).applyQuaternion(this.rig.quaternion); }
   get right() { return this._r.set(1, 0, 0).applyQuaternion(this.rig.quaternion); }
   get flatForward() { return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); }
@@ -74,7 +75,7 @@ export class Player {
     this.pos.set(p.x, p.y + CAP_HH_STAND + CAP_R + 0.05, p.z); this.vel.set(0, 0, 0);
     this.body.setNextKinematicTranslation(this.pos); this.body.setTranslation(this.pos, true);
     this.yaw = yaw; this.pitch = 0; this.health = this.maxHealth; this.alive = true; this.climbing = null; this.deathT = 0;
-    this.recoilP = this.recoilY = this.recoilVP = this.recoilVY = 0; this.punchP = this.punchY = 0; this.landDip = 0; this.shake = 0; this.ads = 0;
+    this.recoilP = this.recoilY = this.recoilVP = this.recoilVY = 0; this.punchP = this.punchY = this.punchVP = this.punchVY = 0; this.landDip = 0; this.shake = 0; this.ads = 0;
     this.updateRig(0);
   }
 
@@ -118,7 +119,9 @@ export class Player {
     const inp = this.input; const now = performance.now() / 1000;
     if (this.alive && (ctx.canControl || ctx.canLook)) {
       // ---- look
-      const adsSens = lerp(1, ctx.adsFov / this.fovBase, this.ads);
+      // Match screen-space motion to the actual camera FOV. Mouse input is
+      // applied directly once; no interpolation or accumulated aim inertia.
+      const adsSens = Math.tan(this.camera.fov * DEG / 2) / Math.tan(this.fovBase * DEG / 2) * lerp(1, this.adsSensitivity, this.ads);
       const s = 0.0021 * this.sens * adsSens;
       this.yaw -= inp.mouseDX * s; this.pitch = clamp(this.pitch - inp.mouseDY * s, -88 * DEG, 88 * DEG);
       this.swayX = damp(this.swayX, inp.mouseDX, 12, dt); this.swayY = damp(this.swayY, inp.mouseDY, 12, dt);
@@ -214,7 +217,7 @@ export class Player {
 
     // ---- move
     const desired = { x: this.vel.x * dt, y: this.vel.y * dt, z: this.vel.z * dt };
-    const m = this.physics.moveCharacter(this.cc, this.collider, this.pos, desired, cg(G.PLAYER, G.WORLD | G.BOT), this.grounded && !this.climbing);
+    const m = this.physics.moveCharacter(this.cc, this.collider, this.pos, desired, cg(G.PLAYER, G.WORLD | G.VEHICLE | G.BOT), this.grounded && !this.climbing);
     const vyBefore = this.vel.y;
     this.pos.x += m.x; this.pos.y += m.y; this.pos.z += m.z;
     this.body.setNextKinematicTranslation(this.pos);
@@ -261,7 +264,7 @@ export class Player {
     const eyeTarget = this.crouching ? 1.08 : 1.62; this.eyeCur = damp(this.eyeCur, eyeTarget, 14, dt);
     // head bob
     const bobSpeed = this.grounded && !this.climbing ? this.speed : 0;
-    const amp = (this.sprinting ? 0.045 : this.crouching ? 0.012 : 0.022) * lerp(1, 0.25, this.ads);
+    const amp = (this.sprinting ? 0.045 : this.crouching ? 0.012 : 0.022) * (1 - this.ads);
     if (bobSpeed > 0.5) this.bobPhase += dt * (this.sprinting ? 10.5 : 8.2);
     const targetBobY = bobSpeed > 0.5 ? Math.abs(Math.sin(this.bobPhase)) * amp - amp * 0.5 : 0;
     const targetBobX = bobSpeed > 0.5 ? Math.cos(this.bobPhase) * amp * 0.5 : 0;
@@ -270,7 +273,7 @@ export class Player {
     this.landDip = damp(this.landDip, 0, 7, dt);
     if (this.landVel > 0) { this.landDip += this.landVel * 0.16; this.landVel = 0; }
     // recoil springs
-    const springStep = (x: number, v: number, k: number, d: number) => { const a = -k * x - d * v; v += a * dt; x += v * dt; return [x, v]; };
+    const springStep = (x: number, v: number, k: number, d: number) => { const n = Math.max(1, Math.ceil(dt * 120)), h = dt / n; for(let i=0;i<n;i++){v += (-k*x-d*v)*h; x += v*h;} return [x, v]; };
     [this.recoilP, this.recoilVP] = springStep(this.recoilP, this.recoilVP, 260, 22);
     [this.recoilY, this.recoilVY] = springStep(this.recoilY, this.recoilVY, 260, 22);
     [this.punchP, this.punchVP] = springStep(this.punchP, this.punchVP, 200, 18);
@@ -279,17 +282,16 @@ export class Player {
     const t = performance.now() / 1000;
     const shX = this.shake * Math.sin(t * 61) * 0.02, shY = this.shake * Math.sin(t * 47 + 1) * 0.02, shR = this.shake * Math.sin(t * 53 + 2) * 0.012;
     // strafe roll + slide roll
-    const rollT = -(this.vel.dot(this.flatRight) / 7) * 0.9 * DEG * lerp(1, 0.3, this.ads) + (this.sliding ? -4 * DEG : 0);
+    const rollT = -(this.vel.dot(this.flatRight) / 7) * 0.9 * DEG * (1 - this.ads) + (this.sliding ? -4 * DEG : 0);
     this.roll = damp(this.roll, rollT, 10, dt);
-    // breathing sway when ADS with sniper
-    const breathe = (ctx && this.ads > 0.5 && this.breathHold <= 0) ? Math.sin(t * 1.7) * 0.0009 : 0;
+    // ADS stays still until the player moves, fires, or takes a hit.
     // death camera: collapse to the ground and roll over
     let deathDrop = 0, deathRoll = 0, deathPitch = 0;
     if (!this.alive) { this.deathT += dt; const t = Math.min(1, this.deathT / 1.1); const e = 1 - (1 - t) * (1 - t); deathDrop = e * (this.eyeCur - 0.35); deathRoll = e * 1.15; deathPitch = e * 0.35; }
     // final rig transform
     const eye = this.feetY + this.eyeCur - this.landDip - deathDrop;
     this.rig.position.set(this.pos.x + this.bobX * 0.5 + shX, eye + this.bobY + shY, this.pos.z);
-    const pitch = this.pitch + this.recoilP + this.punchP - this.landDip * 0.8 + breathe + deathPitch;
+    const pitch = this.pitch + this.recoilP + this.punchP - this.landDip * 0.8 + deathPitch;
     const yaw = this.yaw + this.recoilY + this.punchY;
     this.rig.rotation.set(0, 0, 0, 'YXZ'); this.rig.rotation.y = yaw; this.rig.rotation.x = pitch; this.rig.rotation.z = this.roll + shR + deathRoll;
     // FOV

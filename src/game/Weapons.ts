@@ -129,7 +129,7 @@ export class ViewModel {
     if (this.drawT < 1) { this.drawT = Math.min(1, this.drawT + dt / Math.max(0.05, this.drawDur)); const k = 1 - this.drawT; const kk = k * k; pos.y -= 0.42 * kk; pos.x += 0.08 * kk; rot.x -= 1.1 * kk; rot.z -= 0.35 * kk; }
     if (this.holsterT >= 0) { this.holsterT += dt; const t = clamp(this.holsterT / this.holsterDur, 0, 1); const kk = t * t; pos.y -= 0.42 * kk; pos.x += 0.08 * kk; rot.x -= 1.1 * kk; rot.z -= 0.35 * kk; }
     // ---- sway (mouse lag) & bob & breathing
-    const adsK = 1 - s.ads * 0.9;
+    const adsK = Math.pow(1 - s.ads, 2);
     const swTX = clamp(-s.mouseDY * 0.0022, -0.06, 0.06) * adsK, swTY = clamp(-s.mouseDX * 0.0022, -0.06, 0.06) * adsK, swTZ = clamp(s.mouseDX * 0.0012, -0.04, 0.04) * adsK;
     this.swayRot.x = damp(this.swayRot.x, swTX, 9, dt); this.swayRot.y = damp(this.swayRot.y, swTY, 9, dt); this.swayRot.z = damp(this.swayRot.z, swTZ, 9, dt);
     this.swayPos.x = damp(this.swayPos.x, clamp(-s.mouseDX * 0.00025, -0.03, 0.03) * adsK, 9, dt);
@@ -137,15 +137,15 @@ export class ViewModel {
     const moving = s.grounded && s.speed > 0.5 && !s.climbing;
     const amp = (s.sprinting ? 0.03 : s.crouching ? 0.006 : 0.011) * adsK * (moving ? 1 : 0);
     const bobX = Math.cos(s.bobPhase) * amp, bobY = Math.abs(Math.sin(s.bobPhase)) * amp * 0.8 - amp * 0.4;
-    const breatheY = Math.sin(s.time * 1.5) * 0.0025 * lerp(1, 0.4, s.ads) + Math.sin(s.time * 0.7) * 0.0015;
-    const breatheR = Math.sin(s.time * 1.1) * 0.004 * lerp(1, 0.3, s.ads);
+    const breatheY = Math.sin(s.time * 1.5) * 0.0025 * adsK + Math.sin(s.time * 0.7) * 0.0015 * adsK;
+    const breatheR = Math.sin(s.time * 1.1) * 0.004 * adsK;
     // ---- kick springs
-    const step = (p: THREE.Vector3, v: THREE.Vector3, k: number, dmp: number) => { for (const a of ['x', 'y', 'z'] as const) { const acc = -k * p[a] - dmp * v[a]; v[a] += acc * dt; p[a] += v[a] * dt; } };
+    const step = (p: THREE.Vector3, v: THREE.Vector3, k: number, dmp: number) => { for (const a of ['x', 'y', 'z'] as const) { const n = Math.max(1, Math.ceil(dt*120)), h = dt/n; for(let i=0;i<n;i++){v[a] += (-k*p[a]-dmp*v[a])*h; p[a] += v[a]*h;} } };
     step(this.kickPos, this.kickVel, 320, 24); step(this.kickRot, this.kickRotVel, 260, 20);
     // ---- compose
     this.holder.position.set(pos.x, pos.y, pos.z); this.holder.rotation.set(rot.x, rot.y, rot.z);
-    this.pivot.position.set(this.swayPos.x + bobX + this.kickPos.x, this.swayPos.y + bobY + breatheY + this.kickPos.y, this.kickPos.z);
-    this.pivot.rotation.set(this.swayRot.x + this.kickRot.x * 0.06 + breatheR * 0.3, this.swayRot.y + this.kickRot.y * 0.05, this.swayRot.z + this.kickRot.z * 0.05 + breatheR + (s.sliding ? -0.12 : 0));
+    this.pivot.position.set(this.swayPos.x * adsK + bobX + this.kickPos.x, this.swayPos.y * adsK + bobY + breatheY + this.kickPos.y, this.kickPos.z);
+    this.pivot.rotation.set(this.swayRot.x * adsK + this.kickRot.x * 0.06 + breatheR * 0.3, this.swayRot.y * adsK + this.kickRot.y * 0.05, this.swayRot.z * adsK + this.kickRot.z * 0.05 + breatheR + (s.sliding ? -0.12 : 0));
     // ---- hide when fully scoped
     const hide = !!d.scope && s.ads > 0.82;
     if (hide !== this.scopedHidden) { this.scopedHidden = hide; this.modelRoot.visible = !hide; }
@@ -184,7 +184,7 @@ export class Bullets {
       const segLen = b.speed * dt;
       // gravity drop (subtle, realistic ballistic arc)
       b.dir.y -= 9.81 * dt / b.speed; b.dir.normalize();
-      const hit = this.physics.raycast(b.pos, b.dir, segLen, G.WORLD | G.HITBOX | G.PLAYER, undefined, (c) => { const ow = this.physics.ownerOf(c); return !(ow && ow.entity === b.owner); });
+      const hit = this.physics.raycast(b.pos, b.dir, segLen, G.WORLD | G.VEHICLE | G.HITBOX | G.PLAYER, undefined, (c) => { const ow = this.physics.ownerOf(c); return !(ow && ow.entity === b.owner); });
       if (hit) {
         const ow = hit.owner;
         if (ow && ow.entity) { this.onEntityHit?.({ bullet: b, point: hit.point, normal: hit.normal, owner: ow }); }
@@ -260,6 +260,19 @@ export class Gunplay {
     return s;
   }
 
+  updateAim(canControl: boolean) {
+    const p=this.player, inp=this.input, d=this.def;
+    if(!d)return;
+    const alive=p.alive && canControl && !this.holstering;
+    const adsBtn = inp.btn(2) || inp.down('AltLeft') || inp.down('AltRight');
+    if (inp.hit('KeyE')) this.adsLatched = !this.adsLatched; // E always toggles aim
+    if (this.adsToggle) { if (inp.btnHit(2) || inp.hit('AltLeft') || inp.hit('AltRight')) this.adsLatched = !this.adsLatched; }
+    const adsIn = this.adsToggle ? this.adsLatched : (adsBtn || this.adsLatched);
+    const adsBlocked = !alive || this.reloading || this.cooking || this.throwing || p.sprinting || !!p.climbing || (this.bolting && d.mode === 'bolt');
+    if (adsBlocked && this.adsToggle && (this.reloading || this.cooking || this.throwing || !alive)) this.adsLatched = false;
+    this.adsHeld = adsIn && !adsBlocked;
+  }
+
   update(dt: number, canControl: boolean) {
     const p = this.player, inp = this.input; const d = this.def; if (!d || !this.ready) return;
     const slot = this.slot;
@@ -283,14 +296,6 @@ export class Gunplay {
       this.adsHeld = false; this.adsLatched = false; this.vm.update(dt, this.vmState()); return;
     }
     if (this.drawing) { this.drawT += dt; if (this.drawT >= d.drawTime) this.drawing = false; }
-    // ---- ADS
-    const adsBtn = inp.btn(2) || inp.down('AltLeft') || inp.down('AltRight');
-    if (inp.hit('KeyE')) this.adsLatched = !this.adsLatched; // E always toggles aim
-    if (this.adsToggle) { if (inp.btnHit(2) || inp.hit('AltLeft') || inp.hit('AltRight')) this.adsLatched = !this.adsLatched; }
-    const adsIn = this.adsToggle ? this.adsLatched : (adsBtn || this.adsLatched);
-    const adsBlocked = !alive || this.reloading || this.cooking || this.throwing || p.sprinting || !!p.climbing || (this.bolting && d.mode === 'bolt');
-    if (adsBlocked && this.adsToggle && (this.reloading || this.cooking || this.throwing || !alive)) this.adsLatched = false;
-    this.adsHeld = adsIn && !adsBlocked;
     // ---- reload
     if (this.reloading) {
       this.reloadT += dt;

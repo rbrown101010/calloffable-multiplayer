@@ -2,7 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 
 /** Collision groups (16-bit membership / filter). */
-export const G = { WORLD: 0x0001, PLAYER: 0x0002, BOT: 0x0004, DEBRIS: 0x0008, GRENADE: 0x0010, HITBOX: 0x0020, ALL: 0xffff } as const;
+export const G = { WORLD: 0x0001, PLAYER: 0x0002, BOT: 0x0004, DEBRIS: 0x0008, GRENADE: 0x0010, HITBOX: 0x0020, VEHICLE: 0x0040, ALL: 0xffff } as const;
 export const cg = (member: number, filter: number = G.ALL) => ((member & 0xffff) << 16) | (filter & 0xffff);
 
 export interface RayHit {

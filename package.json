@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test:online": "node --env-file=.env.local tools/verify-online.mjs",
+    "test:expansion": "node tools/verify-expansion.mjs",
     "test:operators": "node tools/verify-operators.mjs"
   },
   "devDependencies": {

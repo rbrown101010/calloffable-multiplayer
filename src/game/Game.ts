@@ -1,3 +1,5 @@
+import { Vehicles } from './Vehicles';
+import { FieldItems } from './FieldItems';
 import { SableMap } from './SableMap';
 import { Online } from './Online';
 import * as THREE from 'three';
@@ -34,11 +36,12 @@ interface Stats { name: string; kills: number; deaths: number; score: number; st
 export class Game {
   renderer!: THREE.WebGLRenderer; scene = new THREE.Scene(); camera!: THREE.PerspectiveCamera; weaponCam!: THREE.PerspectiveCamera;
   physics!: Physics; input!: Input; audio!: AudioManager; map!: RustMap; player!: Player; vm!: ViewModel; gunplay!: Gunplay; bullets!: Bullets; effects!: Effects; bots!: BotManager; hud!: HUD; grenades!: Grenades; post!: PostFX; sun!: THREE.DirectionalLight;
+  vehicles!: Vehicles; fieldItems!: FieldItems;
   online!: Online; mapName = 'SABLE REACH';
   state: State = 'loading'; loadoutIdx = 0; time = 0; clock = new THREE.Clock();
   match = { timeLeft: MATCH_TIME, over: false };
   respawnT = 0; playerLastShot = -9; botLastShot = new Map<Bot, number>(); bestStreak = 0; stepSide = 0;
-  settings = { sens: 1, fov: 90, vol: 0.8, scale: Math.min(devicePixelRatio, 1.5), adsToggle: false, wind: 1, control: 'mouse' as 'mouse' | 'trackpad', difficulty: 'regular' as 'recruit' | 'regular' | 'veteran', scoreLimit: 10 };
+  settings = { sens: 1, adsSens: 1, graphics: 'auto' as 'auto' | 'quality', fov: 90, vol: 0.8, scale: Math.min(devicePixelRatio, 1.5), adsToggle: false, wind: 1, control: 'mouse' as 'mouse' | 'trackpad', difficulty: 'regular' as 'recruit' | 'regular' | 'veteran', scoreLimit: 10 };
   snaps: Snap[] = []; shotLog: { t: number; owner: any }[] = []; lastKill: { t: number; killer: any; victim: any; weapon: string; headshot: boolean } | null = null; kc: KillcamState | null = null;
   voice!: Voice; killTimes: number[] = []; wasLeader = false; uavAnnounced = false;
   playerPuppet: SoldierPuppet | null = null; sunDir = new THREE.Vector3(0.5, 0.7, 0.3); snapIdx = 0;
@@ -46,6 +49,7 @@ export class Game {
   params = new URLSearchParams(location.search);
   nolock = this.params.has('nolock'); god = this.params.has('god');
   menuAngle = 1.05;
+  private shadowTimer = 0; private adaptiveTime = 0; private adaptiveFrames = 0; private resolutionCooldown = 0; private snapTimer = 0; private minimapTimer = 0;
   private _v = new THREE.Vector3(); private _v2 = new THREE.Vector3();
 
   // ------------------------------------------------------------------ boot
@@ -68,7 +72,7 @@ export class Game {
     this.map = this.mapName === 'RUST' ? new RustMap(this.physics) : new SableMap(this.physics); this.scene.add(this.map.build());
     this.effects = new Effects(this.scene, this.physics, this.audio);
     this.player = new Player(this.physics, this.input, this.camera, this.map.ladders); this.scene.add(this.player.rig);
-    this.player.sens = this.settings.sens; this.player.fovBase = this.settings.fov; this.player.fovCur = this.settings.fov;
+    this.player.adsSensitivity = this.settings.adsSens; this.player.sens = this.settings.sens; this.player.fovBase = this.settings.fov; this.player.fovCur = this.settings.fov;
     this.vm = new ViewModel(this.camera);
     this.bullets = new Bullets(this.scene, this.physics, this.effects, this.audio); this.bullets.onEntityHit = (h) => this.onEntityHit(h);
     this.gunplay = new Gunplay(this.player, this.input, this.vm, this.bullets, this.effects, this.audio, (e) => this.onGunEvent(e));
@@ -94,7 +98,7 @@ export class Game {
     await this.bots.create(BOT_NAMES, BOT_SKILL);
     for (const b of this.bots.bots) { b.onDeath = (att, w, hs) => this.onKill(att, b, w, hs); if (b.model) b.model.visible = false; }
     // the player's own body: casts a shadow in play, becomes visible in bot-perspective killcams
-    this.playerPuppet = await SoldierPuppet.create(this.scene); await this.playerPuppet.setWeapon(WEAPONS.scarh); this.playerPuppet.setShadowOnly(true);
+    this.playerPuppet = await SoldierPuppet.create(this.scene); await this.playerPuppet.setWeapon(WEAPONS.scarh); this.playerPuppet.equip(0); this.playerPuppet.setShadowOnly(true);
     this.grenades.onVictimHit = (victim, killed, owner) => { if (owner === this.player && victim !== this.player) { this.hud.hitmarker(killed ? 'kill' : 'hit'); this.audio.hitmarker(false); } };
     this.player.onStuck = () => {
       const cands = this.map.waypoints.filter((w) => w.links.length > 0).map((w) => ({ w, d: w.pos.distanceTo(this.player.pos) })).sort((a, b) => a.d - b.d);
@@ -108,6 +112,7 @@ export class Game {
     let manifest: Record<string, string> = { ...SOUNDS };
     try { const extra: string[] = await (await fetch('/sounds/manifest.json')).json(); for (const n of extra) manifest[n] = `/sounds/${n}.mp3`; } catch {}
     await this.audio.load(manifest, (d, t) => setLoad(0.7 + 0.2 * d / t, `LOADING AUDIO ${d}/${t}`));
+    this.vehicles = new Vehicles(this); this.fieldItems = new FieldItems(this);
     setLoad(0.92, 'COMPOSITING');
     this.post = setupPost(this.renderer, this.scene, this.camera, this.weaponCam, { ao: !this.params.has('noao') });
     this.renderMinimapBase();
@@ -127,7 +132,7 @@ export class Game {
   private setupRenderer() {
     const canvas = el<HTMLCanvasElement>('gl');
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false, depth: true, preserveDrawingBuffer: this.params.has('shot') });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.settings.scale));
+    this.renderer.setPixelRatio(this.targetPixelRatio());
     this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFShadowMap; this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = THREE.NoToneMapping; this.renderer.toneMappingExposure = 1.12;
@@ -149,7 +154,7 @@ export class Game {
     // sun
     this.sun = new THREE.DirectionalLight(0xffe0b4, 2.7);
     this.sun.position.copy(sunDir).multiplyScalar(110); this.sun.target.position.set(0, 0, 0); this.scene.add(this.sun.target);
-    this.sun.castShadow = true; const sc = this.sun.shadow; sc.mapSize.set(4096, 4096); sc.camera.near = 20; sc.camera.far = 220; sc.camera.left = -64; sc.camera.right = 64; sc.camera.top = 64; sc.camera.bottom = -64; sc.bias = -0.00035; sc.normalBias = 0.035; sc.radius = 1.6;
+    this.sun.castShadow = true; const sc = this.sun.shadow; sc.mapSize.set(2048, 2048); sc.camera.near = 20; sc.camera.far = 220; sc.camera.left = -64; sc.camera.right = 64; sc.camera.top = 64; sc.camera.bottom = -64; sc.bias = -0.00035; sc.normalBias = 0.035; sc.radius = 1.6;
     this.sun.layers.enable(VIEW_LAYER); this.scene.add(this.sun);
     const hemi = new THREE.HemisphereLight(0xb1c4d5, 0x80634b, 0.8); hemi.layers.enable(VIEW_LAYER); this.scene.add(hemi);
     // The HDR sun and bloom stay compatible with the half-float post-processing buffer.
@@ -172,15 +177,17 @@ export class Game {
     el('btn-loadout').addEventListener('click', () => { this.endMatch(true); });
     el('btn-quit').addEventListener('click', () => this.endMatch(false, true));
     el('btn-again').addEventListener('click', () => {if(this.online?.connected){el('lobby').classList.remove('hidden');}else this.showMenu();});
-    const bind = (id: string, key: 'sens' | 'fov' | 'vol' | 'scale' | 'wind', fmt: (v: number) => string, apply: (v: number) => void) => {
+    const bind = (id: string, key: 'sens' | 'adsSens' | 'fov' | 'vol' | 'scale' | 'wind', fmt: (v: number) => string, apply: (v: number) => void) => {
       const inp = el<HTMLInputElement>(id), out = el(id + '-v'); inp.value = String(this.settings[key]); out.textContent = fmt(this.settings[key]);
       inp.addEventListener('input', () => { const v = parseFloat(inp.value); (this.settings as any)[key] = v; out.textContent = fmt(v); apply(v); this.saveSettings(); });
     };
     bind('opt-sens', 'sens', (v) => v.toFixed(2), (v) => { this.player.sens = v; });
+    bind('opt-ads-sens', 'adsSens', v=>v.toFixed(2), v=>{this.player.adsSensitivity=v;});
     bind('opt-fov', 'fov', (v) => v.toFixed(0), (v) => { this.player.fovBase = v; });
     bind('opt-vol', 'vol', (v) => v.toFixed(2), (v) => this.audio.setVolume(v));
-    bind('opt-scale', 'scale', (v) => v.toFixed(2), (v) => { this.renderer.setPixelRatio(Math.min(devicePixelRatio, v)); this.onResize(); });
+    bind('opt-scale', 'scale', (v) => v.toFixed(2), (v) => { this.renderer.setPixelRatio(this.targetPixelRatio()); this.onResize(); });
     bind('opt-wind', 'wind', (v) => v.toFixed(2), (v) => this.audio.setWind(v));
+    const graphics=el<HTMLSelectElement>('opt-graphics');graphics.value=this.settings.graphics;graphics.onchange=()=>{this.settings.graphics=graphics.value as 'auto'|'quality';this.renderer.setPixelRatio(this.targetPixelRatio());this.onResize();this.saveSettings();};
     const adsSel = el<HTMLSelectElement>('opt-ads'); adsSel.value = this.settings.adsToggle ? 'toggle' : 'hold';
     adsSel.addEventListener('change', () => { this.settings.adsToggle = adsSel.value === 'toggle'; this.gunplay.adsToggle = this.settings.adsToggle; this.saveSettings(); });
     this.gunplay.adsToggle = this.settings.adsToggle;
@@ -208,6 +215,8 @@ export class Game {
       else if (this.state === 'paused' && e.code === 'Enter') this.resume();
       else if (this.state === 'ended' && e.code === 'Enter') this.showMenu();
     });
+    el('capture-pointer').onclick=()=>this.input.lock();
+    this.renderer.domElement.addEventListener('mousedown',()=>{if(this.state==='playing'&&!this.nolock&&!this.input.locked)this.input.lock();});
     this.input.onLockChange = (locked) => { if (!locked && this.state === 'playing' && !this.nolock) this.pause(); };
     window.addEventListener('mousedown', () => { this.audio.unlock(); });
   }
@@ -225,6 +234,7 @@ export class Game {
   private saveSettings() { try { localStorage.setItem('rust_settings', JSON.stringify(this.settings)); } catch {} }
 
   showMenu() {
+    this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
     this.state = 'menu'; el('menu').classList.remove('hidden'); el('pause').classList.add('hidden'); el('end').classList.add('hidden'); this.hud.hide();
     this.vm.root.visible = false; this.input.unlock(); this.kc = null; this.hud.hideKillcam(); this.playerPuppet?.setShadowOnly(true);
     for (const b of this.bots.bots) { if (b.alive) b.die(); if (b.model) b.model.visible = false; b.respawnT = 1e9; }
@@ -233,8 +243,10 @@ export class Game {
   // ------------------------------------------------------------------ match flow
   async startMatch() {
     if (this.state === 'playing') return;
+    if(!this.nolock)this.input.lock();
     this.audio.unlock(); this.audio.startWind(); this.audio.setWind(this.settings.wind);
     el('menu').classList.add('hidden'); el('end').classList.add('hidden'); el('pause').classList.add('hidden');
+    this.vehicles.reset();this.fieldItems.reset();
     this.match.timeLeft = MATCH_TIME; this.match.over = false; this.bestStreak = 0;
     const P = this.player; P.kills = 0; P.deaths = 0; P.score = 0; P.streak = 0;
     for (const b of this.bots.bots) { b.kills = 0; b.deaths = 0; b.score = 0; b.streak = 0; b.respawnT = 0; }
@@ -252,7 +264,7 @@ export class Game {
     this.state = 'playing'; if (!this.nolock) this.input.lock();
     this.hud.centerMsg('FREE-FOR-ALL', undefined, '');
   }
-  private pause() { if (this.state !== 'playing') return; this.state = 'paused'; el('pause').classList.remove('hidden'); this.hud.showScoreboard(false); }
+  private pause() { if (this.state !== 'playing') return; this.state = 'paused'; this.vehicles.silence(); el('pause').classList.remove('hidden'); this.hud.showScoreboard(false); }
   resume() { if (this.state !== 'paused') return; el('pause').classList.add('hidden'); this.state = 'playing'; if (!this.nolock) this.input.lock(); }
   private endMatch(toMenu = false, skipKillcam = false) {
     if (toMenu) { this.showMenu(); return; }
@@ -262,6 +274,7 @@ export class Game {
     this.showEndScreen();
   }
   showEndScreen() {
+    this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
     this.state = 'ended'; this.input.unlock(); el('pause').classList.add('hidden'); this.hud.showScoreboard(false); this.hud.hideKillcam(); this.vm.root.visible = false;
     const rows = this.scoreRows(); const place = rows.findIndex((r) => r.me) + 1;
     el('end-eyebrow').textContent = 'MATCH OVER · FREE-FOR-ALL · '+this.mapName;
@@ -278,6 +291,7 @@ export class Game {
     return rows.sort((a, b) => b.score - a.score || a.deaths - b.deaths);
   }
   respawnPlayer(first = false) {
+    this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
     const s = this.bots.pickSpawn(this.player);
     this.player.spawn(s.pos, s.yaw);
     this.gunplay.refill(); this.gunplay.lethals = LOADOUTS[this.loadoutIdx].lethal; this.hud.setLethal(this.gunplay.lethals);
@@ -285,6 +299,7 @@ export class Game {
     this.vm.root.visible = true; this.hud.hideRespawn(); this.hud.setHealth(100, 100);
   }
   private playerDied(attacker: any, weapon: string) {
+    this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
     this.hud.showRespawn(attacker && attacker !== this.player ? attacker.name : 'YOURSELF', weapon || ''); this.respawnT = 5; this.hud.setRespawnCount(5);
     this.vm.root.visible = false; this.audio.setLowHealth(0); this.gunplay.reloading = false; this.gunplay.cooking = false; this.gunplay.throwing = false; this.gunplay.bolting = false;
   }
@@ -467,6 +482,7 @@ export class Game {
     if (this.state === 'playing' || (this.state==='paused'&&this.online?.active)) this.updatePlaying(dt);
     else if (this.state === 'killcam') this.updateKillcam(dt);
     else if (this.state === 'menu' || this.state === 'ended') this.updateMenuCam(dt);
+    el('capture-pointer').classList.toggle('hidden',this.nolock||this.input.locked||this.state!=='playing'||!el('lobby').classList.contains('hidden'));
     this.render(dt);
     this.input.endFrame();
   }
@@ -490,9 +506,13 @@ export class Game {
       if (this.countdown <= 0) { this.hud.streak('GO'); this.audio.countdownBeep(true); this.bots.frozen = false; this.voice.announce('ffa', 3, 0); }
     }
     const canControl = P.alive && !this.match.over && this.countdown <= 0 && this.state==='playing' && el('lobby').classList.contains('hidden');
-    this.updateStreaks(dt, canControl);
-    P.update(dt, { canControl, canLook: P.alive && !this.match.over && this.state==='playing', speedMul: def?.speedMul ?? 1, adsHeld: gp.adsHeld, adsFov: def?.adsFov ?? 60, adsTime: def?.adsTime ?? 0.25, firing: gp.firing });
-    gp.update(dt, canControl);
+    this.vehicles.update(dt,canControl);
+    const onFoot=canControl&&!P.mounted;
+    this.updateStreaks(dt, onFoot);
+    gp.updateAim(onFoot);
+    if(!P.mounted)P.update(dt, { canControl:onFoot, canLook: P.alive && !this.match.over && this.state==='playing' && el('lobby').classList.contains('hidden') && (this.input.locked||this.input.forceLocked), speedMul: def?.speedMul ?? 1, adsHeld: gp.adsHeld, adsFov: def?.adsFov ?? 60, adsTime: def?.adsTime ?? 0.25, firing: gp.firing });
+    gp.update(dt, onFoot);
+    this.fieldItems.update(dt,onFoot);
     this.bullets.listener.copy(P.eyePos); this.bullets.listenerOwner = P; this.bullets.update(dt);
     if(!this.online?.connected||this.online.isHost)this.bots.update(dt, this.time);
     if(!this.online?.connected||this.online.isHost)this.grenades.update(dt, () => this.online?.connected?this.online.victims:this.bots.victims);
@@ -500,8 +520,10 @@ export class Game {
     this.effects.update(dt, P.eyePos, this.time);
     this.audio.updateListener(this.camera); this.audio.update(dt);
     // player body (shadow) + killcam recorder
-    if (this.playerPuppet) this.playerPuppet.update(dt, { pos: P.pos, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, speed: P.speed, alive: P.alive, deathT: P.deathT, crouch: P.crouching });
-    if (this.countdown <= 0) {
+    if (this.playerPuppet) this.playerPuppet.update(dt, { pos: P.pos, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, speed: P.speed, alive: P.alive, deathT: P.deathT, crouch: P.crouching, riding:P.mounted });
+    this.snapTimer+=dt;
+    if (this.countdown <= 0 && this.snapTimer>=.05) {
+      this.snapTimer=0;
       this.snaps.push({ t: this.time, p: { x: P.pos.x, y: P.pos.y, z: P.pos.z, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, alive: P.alive, speed: P.speed, eyeY: P.rig.position.y, pitch: P.pitch, ads: P.ads }, b: this.bots.bots.map((b) => ({ x: b.pos.x, y: b.pos.y, z: b.pos.z, feetY: b.feetY, yaw: b.yaw, aimYaw: b.aimYaw, aimPitch: b.aimPitch, alive: b.alive, speed: Math.hypot(b.vel.x, b.vel.z) })) });
       while (this.snaps.length && this.snaps[0].t < this.time - 9) this.snaps.shift();
       while (this.shotLog.length && this.shotLog[0].t < this.time - 9) this.shotLog.shift();
@@ -523,17 +545,18 @@ export class Game {
     }
     // ---- HUD
     const scoped = !!def?.scope; const sp = gp.spread();
-    this.hud.setCrosshair(sp, this.camera.fov, P.ads, !P.alive || P.sprinting || gp.reloading || gp.holstering || gp.drawing || gp.cooking, scoped);
-    const scopeOn = scoped && P.ads > 0.82 && P.alive;
+    this.hud.setCrosshair(sp, this.camera.fov, P.ads, !P.alive || P.mounted || P.sprinting || gp.reloading || gp.holstering || gp.drawing || gp.cooking, scoped);
+    const scopeOn = scoped && P.ads > 0.82 && P.alive && !P.mounted;
     if (scopeOn) { const hit = this.physics.raycast(P.eyePos, P.forward, 400, G.WORLD | G.HITBOX); this.hud.setScope(true, hit ? hit.distance : null); } else this.hud.setScope(false, null);
     this.hud.setHealth(P.health, P.maxHealth); this.hud.setTimer(this.match.timeLeft);
     const rows = this.scoreRows(); this.hud.setScores(P.kills, rows.find((r) => !r.me)?.kills ?? 0);
     this.hud.showScoreboard(this.input.down('Tab') && P.alive, rows);
     const s = gp.slot; if (s) { this.hud.setAmmo(s.mag, s.reserve, s.def.mag, gp.reloading); this.hud.setAmmoWarn(gp.reloading ? null : s.mag === 0 && s.reserve === 0 ? 'NO AMMO' : s.mag === 0 ? 'RELOAD' : s.mag <= Math.max(1, Math.floor(s.def.mag * 0.25)) ? 'LOW AMMO' : null); }
-    this.hud.drawMinimap(P.pos, P.yaw, (this.online?.connected?[...this.bots.bots,...this.online.remotes.values()]:this.bots.bots).map((b) => ({ pos: b.pos, alive: b.alive, visible: this.time - (this.botLastShot.get(b) ?? -9) < 2.2 || b.pos.distanceTo(P.pos) < 5 })), this.time, this.time < this.uavUntil);
+    this.minimapTimer+=dt;
+    if(this.minimapTimer>.1){this.minimapTimer=0;this.hud.drawMinimap(P.pos, P.yaw, (this.online?.connected?[...this.bots.bots,...this.online.remotes.values()]:this.bots.bots).map((b) => ({ pos: b.pos, alive: b.alive, visible: this.time - (this.botLastShot.get(b) ?? -9) < 2.2 || b.pos.distanceTo(P.pos) < 5 })), this.time, this.time < this.uavUntil);}
     this.hud.setStreaks(P.streak, this.time < this.uavUntil ? 'active' : this.uavReady ? 'ready' : 'locked', this.airTargeting ? 'active' : this.airReady ? 'ready' : 'locked');
     el('sector-label').textContent=this.map instanceof SableMap?this.map.sector(P.pos.x,P.pos.z):'RUST';
-    el('stance-label').textContent=P.sliding?'SLIDING':P.crouching?'CROUCHED':P.sprinting?'SPRINTING':'STANDING';
+    el('stance-label').textContent=P.mounted?'DRIVING':P.sliding?'SLIDING':P.crouching?'CROUCHED':P.sprinting?'SPRINTING':'STANDING';
     el('stamina-fill').style.width=Math.round(P.stamina*100)+'%';
     this.audio.setLowHealth(P.alive && P.health < 38 ? 1 - P.health / 38 : 0);
     this.hud.update(dt, P.alive ? P.health : 100);
@@ -549,13 +572,30 @@ export class Game {
     if (this.weaponCam.aspect !== cam.aspect) { this.weaponCam.aspect = cam.aspect; this.weaponCam.updateProjectionMatrix(); }
     // shadow follows the player
     const sp = this.state === 'playing' ? this.player.pos : this.player.rig.position;
-    this.sun.target.position.set(sp.x, 0, sp.z); this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 110); this.sun.target.updateMatrixWorld();
-    this.renderer.shadowMap.needsUpdate = true;
+    this.shadowTimer+=dt;
+    if(this.shadowTimer>=1/30){this.sun.target.position.set(Math.round(sp.x*8)/8,0,Math.round(sp.z*8)/8);this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir,110);this.sun.target.updateMatrixWorld();this.renderer.shadowMap.needsUpdate=true;this.shadowTimer=0;}
     this.post.composer.render(dt);
+    this.adaptResolution(dt);
+  }
+
+  private targetPixelRatio(){
+    const cap=this.settings.graphics==='quality'?Infinity:Math.sqrt(2300000/(innerWidth*innerHeight));
+    return Math.min(devicePixelRatio,this.settings.scale,cap);
+  }
+  private adaptResolution(dt:number){
+    if(this.settings.graphics!=='auto'||document.hidden||this.state!=='playing')return;
+    this.adaptiveTime+=dt;this.adaptiveFrames++;this.resolutionCooldown-=dt;
+    if(this.adaptiveTime<2)return;
+    const frame=this.adaptiveTime/this.adaptiveFrames,ratio=this.renderer.getPixelRatio(),max=this.targetPixelRatio();
+    if(this.resolutionCooldown<=0){
+      const next=frame>.022?Math.max(.55,ratio-.1):frame<.0175?Math.min(max,ratio+.05):ratio;
+      if(Math.abs(next-ratio)>.025){this.renderer.setPixelRatio(next);this.onResize();this.resolutionCooldown=5;}
+    }
+    this.adaptiveTime=0;this.adaptiveFrames=0;
   }
 
   private onResize() {
-    const w = innerWidth, h = innerHeight; this.renderer.setSize(w, h); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.weaponCam.aspect = w / h; this.weaponCam.updateProjectionMatrix(); this.post.setSize(w, h);
+    const w = innerWidth, h = innerHeight; if(this.settings.graphics==='auto')this.renderer.setPixelRatio(Math.min(this.renderer.getPixelRatio(),this.targetPixelRatio())); this.renderer.setSize(w, h); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.weaponCam.aspect = w / h; this.weaponCam.updateProjectionMatrix(); this.post.setSize(w, h);
   }
 
   private renderMinimapBase() {

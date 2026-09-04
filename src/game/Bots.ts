@@ -40,7 +40,7 @@ export class Bot {
     this.def = WEAPONS[loadout.primary]; this.mag = this.def.mag; this.reserve = this.def.reserve * 4;
     const R = physics.R;
     this.body = physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -50, 0));
-    this.collider = physics.world.createCollider(R.ColliderDesc.capsule(CAP_HH, CAP_R).setCollisionGroups(cg(G.BOT, G.WORLD | G.PLAYER | G.BOT | G.GRENADE | G.DEBRIS)).setFriction(0), this.body);
+    this.collider = physics.world.createCollider(R.ColliderDesc.capsule(CAP_HH, CAP_R).setCollisionGroups(cg(G.BOT, G.WORLD | G.VEHICLE | G.PLAYER | G.BOT | G.GRENADE | G.DEBRIS)).setFriction(0), this.body);
     // hitboxes (sensors): head sphere, torso capsule, legs capsule
     // hitboxes are sensors in the HITBOX group; only bullet raycasts query that group, so movement is unaffected
     this.hitHead = physics.world.createCollider(R.ColliderDesc.ball(0.15).setTranslation(0, 0.66, 0).setSensor(true).setCollisionGroups(cg(G.HITBOX, G.ALL)), this.body);
@@ -428,7 +428,7 @@ export class BotManager {
     b.vel.x = damp(b.vel.x, target.x, 9, dt); b.vel.z = damp(b.vel.z, target.z, 9, dt);
     if (!b.climbing) b.vel.y -= 19.5 * dt;
     const desired = { x: b.vel.x * dt, y: b.vel.y * dt, z: b.vel.z * dt };
-    const m = this.physics.moveCharacter(b.cc, b.collider, b.pos, desired, cg(G.BOT, G.WORLD | G.PLAYER | G.BOT), b.grounded && !b.climbing);
+    const m = this.physics.moveCharacter(b.cc, b.collider, b.pos, desired, cg(G.BOT, G.WORLD | G.VEHICLE | G.PLAYER | G.BOT), b.grounded && !b.climbing);
     b.pos.x += m.x; b.pos.y += m.y; b.pos.z += m.z;
     b.body.setNextKinematicTranslation(b.pos);
     b.grounded = b.climbing ? true : m.grounded;

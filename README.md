@@ -9,9 +9,17 @@ A browser FPS with a 240 × 240 m desert refinery, ten loadouts, seven tactical 
 - **Voice:** microphone off by default. Enable it in the lobby or pause overlay. Optional push-to-talk uses **V**. Click a player's mic indicator to mute them locally.
 - The lobby owner can copy the invite link. Share that link only with the people you want in the session.
 
-Sable Reach has six areas: refinery, tank farm, freight terminal, command compound, extraction yard, and north approach. Roofs, stairs, a bridge, towers, interior rooms, container lanes, and cover clusters connect them. The playable area is 6.25 times the original 96 × 96 m arena. Photograph-based PBR materials, a sunset HDR environment, and scanned rocks, military crates, and generators provide surface detail.
+Sable Reach has six areas: refinery, tank farm, freight terminal, command compound, extraction yard, and the quarry ridgeline. Roofs, stairs, a bridge, towers, interior rooms, container lanes, and cover clusters connect them. The playable area is 6.25 times the original 96 × 96 m arena. Photograph-based PBR materials, a sunset HDR environment, and scanned rocks, military crates, and generators provide surface detail.
 
 Operators flank, hold angles, rush, change ranges, crouch under pressure, retreat to reload, and avoid live grenades. Weapon-space two-bone arm IK keeps both hands on their grips through movement and crouching; wrists and fingers use a firing grip. Helmet, headset, radio, pouch, and uniform variants distinguish the operators.
+
+## Quarry Run update
+
+- Six Kestrel ATVs: WASD driving, steering, reverse, Space handbrake, Shift boost, mouse orbit camera, E enter/exit. Wheel suspension follows slopes and ramps launch the vehicle into the air. Single driver per ATV; abandoned vehicles return to their parking spots. Driver poses and vehicle locations are shared in multiplayer, including host handoff.
+- A two-floor relay station with a roof, a 64 m upper catwalk, freight overlook, drive-through overpass, five ramps, culvert shelters, 6.5 m and 4.8 m ridges, and a 3.4 m excavated quarry. New navigation links let AI reach upper routes.
+- Four medical stations, four ammunition stations, and three reusable jump pads. Supplies respawn after 22 seconds and use shared cooldowns in multiplayer.
+- ADS camera and weapon idle drift removed; raw mouse deltas, pointer recapture, FOV-matched sensitivity, and a separate ADS sensitivity slider. Recoil springs use small simulation steps to stay stable during a slow frame.
+- Auto graphics caps the internal pixel count and adapts resolution when frames slow down. Shadows use 2048 px at 30 Hz, minimap refresh is 10 Hz, and killcam recording is 20 Hz. Vehicle parts are batched; wrist/leg rig lookups reuse cached data. Full-resolution rendering remains an option under Escape > Graphics.
 
 ## Loadouts
 
@@ -32,7 +40,10 @@ Operators flank, hold angles, rush, change ranges, crouch under pressure, retrea
 
 | Input | Action |
 |---|---|
-| WASD | Move |
+| WASD | Move / drive |
+| E near an ATV | Enter / exit |
+| Space while driving | Handbrake |
+| Shift while driving | Boost |
 | Shift | Sprint / steady scoped aim |
 | Space | Jump / leave ladder |
 | C or Ctrl | Crouch; sprint then crouch to slide |
@@ -47,7 +58,7 @@ Operators flank, hold angles, rush, change ranges, crouch under pressure, retrea
 | Tab | Scoreboard |
 | Esc | Pause / settings / multiplayer controls |
 
-In the loadout menu, keys **1–9, 0** select the ten classes. Trackpad mode supports **F** to fire and **E** to aim. Desktop keyboard and mouse recommended; no touch controls are implemented.
+In the loadout menu, keys **1–9, 0** select the ten classes. Trackpad mode supports **F** to fire and **E** to aim when away from an available ATV. Desktop keyboard and mouse recommended; no touch controls are implemented.
 
 ## Development
 
@@ -77,9 +88,13 @@ node --env-file=.env.local tools/verify-online.mjs
 # Against a deployed build:
 TEST_URL=https://your-site.vercel.app node --env-file=.env.local tools/verify-online.mjs
 node tools/verify-operators.mjs
+node tools/verify-expansion.mjs
+WIDTH=2560 HEIGHT=1440 DPR=2 node tools/benchmark.mjs
 ```
 
-The multiplayer check uses two isolated Chrome contexts with fake microphone audio. It exercises invite rejection, joining, start, pose/crouch replication, real bullet damage, respawn, voice packets, forced direct-media failure and radio fallback, push-to-talk, results, rematches, and host transfer. It is not an eight-device load test or a listening test of physical microphones.
+The multiplayer check uses two isolated Chrome contexts with fake microphone audio. It exercises invite rejection, joining, start, pose/crouch replication, exclusive vehicle seats, host and guest driving, occupied-vehicle host transfer, real bullet damage, respawn, voice packets, forced direct-media failure and radio fallback, push-to-talk, results, rematches, and host transfer. It is not an eight-device load test or a listening test of physical microphones.
+
+`verify-expansion.mjs` exercises real pointer capture/re-entry, stationary aiming, steering/boost/braking, a ramp jump and landing, dismount, supplies, and launch pads. `benchmark.mjs` samples actual browser frame and CPU timings with seven bots. Set `TEST_URL` to select the server (inspection tools use port 5180 by default).
 
 `tools/puppet-preview.html` is a local inspection stage. Operator verification checks both hands against each weapon grip in standing/crouched and raised/lowered aim poses. Debug URL flags include `?noao`, `?botfreeze`, `?passive`, `?ghost`, and `?nolock` for local inspection.
 

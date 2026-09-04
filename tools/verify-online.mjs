@@ -24,6 +24,32 @@ try{
  console.log('PASS player positions replicated');
  await b.keyboard.press('c');await a.waitForFunction(()=>[...window.__game.online.remotes.values()][0].crouch,undefined,{timeout:10000});await b.keyboard.press('c');
  console.log('PASS crouch stance replicated');
+ // Seats are host-granted; both local driving directions must replicate.
+ await a.evaluate(()=>{const g=window.__game;g.player.teleport(g.player.pos.clone().set(45,0,31));});
+ await b.evaluate(()=>{const g=window.__game;g.player.teleport(g.player.pos.clone().set(46,0,31));});
+ await a.keyboard.press('e');await a.waitForFunction(()=>window.__game.player.mounted);
+ await b.waitForFunction(()=>window.__game.vehicles.list[0].driver===window.__game.online.hostId);
+ await b.evaluate(()=>window.__game.online.vehicleAction(0,'enter'));await b.waitForTimeout(500);
+ assert.equal(await b.evaluate(()=>window.__game.player.mounted),false);
+ console.log('PASS shared ATV has one exclusive driver seat');
+ const oldZ=await a.evaluate(()=>window.__game.vehicles.current.pos.z);
+ await a.keyboard.down('w');await a.waitForTimeout(1700);await a.keyboard.up('w');await a.keyboard.down('Space');await a.waitForTimeout(800);await a.keyboard.up('Space');
+ await b.waitForFunction(z=>window.__game.vehicles.list[0].pos.z<z-10,oldZ);
+ const az=await a.evaluate(()=>window.__game.vehicles.list[0].pos.z),bz=await b.evaluate(()=>window.__game.vehicles.list[0].pos.z);assert(Math.abs(az-bz)<2);
+ console.log('PASS host ATV movement replicated to guest');
+ await a.keyboard.press('e');await a.waitForFunction(()=>!window.__game.player.mounted);await b.waitForFunction(()=>!window.__game.vehicles.list[0].driver);
+ await b.evaluate(()=>{const g=window.__game,v=g.vehicles.list[0];g.player.teleport(v.pos.clone().add({x:2.4,y:-.69,z:0}));});
+ await a.waitForFunction(()=>{const g=window.__game,b=[...g.online.remotes.values()][0];return b.pos.distanceTo(g.vehicles.list[0].pos)<4;});
+ await b.keyboard.press('e');await b.waitForFunction(()=>window.__game.player.mounted);
+ const guestZ=await b.evaluate(()=>window.__game.vehicles.current.pos.z);await b.keyboard.down('w');await b.waitForTimeout(1500);await b.keyboard.up('w');await b.keyboard.down('Space');await b.waitForTimeout(700);await b.keyboard.up('Space');
+ await a.waitForFunction(z=>window.__game.vehicles.list[0].pos.z<z-8,guestZ);
+ const zA=await a.evaluate(()=>window.__game.vehicles.list[0].pos.z),zB=await b.evaluate(()=>window.__game.vehicles.list[0].pos.z);assert(Math.abs(zA-zB)<2);
+ console.log('PASS guest ATV prediction and host relay agree');
+ await b.keyboard.press('e');await b.waitForFunction(()=>!window.__game.player.mounted);
+ await a.evaluate(()=>{const g=window.__game;g.player.teleport(g.player.pos.clone().set(50,0,24));g.player.yaw=-Math.PI/2;g.player.pitch=0;});
+ await b.evaluate(()=>{const g=window.__game;g.player.teleport(g.player.pos.clone().set(58,0,24));g.player.yaw=Math.PI/2;g.player.pitch=0;});
+ await a.waitForFunction(()=>[...window.__game.online.remotes.values()][0].pos.x>57);
+
  await a.evaluate(()=>{window.__game.player.pitch=-.005;});await a.mouse.down();
  await a.waitForFunction(()=>window.__game.player.kills>=1,undefined,{timeout:15000});await a.mouse.up();
  await b.waitForFunction(()=>window.__game.player.deaths>=1,undefined,{timeout:10000});
@@ -44,7 +70,15 @@ try{
  await a.evaluate(()=>window.__game.online.finish());await b.waitForFunction(()=>window.__game.state==='ended');
  await a.locator('#btn-again').click();await a.locator('#lobby-bots').selectOption('3');await a.locator('#lobby-start').click();await b.waitForFunction(()=>window.__game.state==='playing');
  console.log('PASS shared results and rematch');
+
+ await b.waitForFunction(()=>window.__game.countdown<=0);
+ await b.evaluate(()=>{const g=window.__game;g.player.teleport(g.player.pos.clone().set(45,0,31));});
+ await a.waitForFunction(()=>{const g=window.__game,b=[...g.online.remotes.values()][0];return b.pos.distanceTo(g.vehicles.list[0].pos)<4;});
+ await b.keyboard.press('e');await b.waitForFunction(()=>window.__game.player.mounted);
  await a.evaluate(()=>window.__game.online.leave());await b.waitForFunction(()=>window.__game.online.isHost&&window.__game.bots.bots.filter(b=>b.alive).length===3,undefined,{timeout:20000});console.log('PASS host handoff and bot simulation survive the original host leaving');
+ assert(await b.evaluate(()=>window.__game.player.mounted&&window.__game.vehicles.current.driver===window.__game.online.id));
+ const handoffZ=await b.evaluate(()=>window.__game.vehicles.current.pos.z);await b.keyboard.down('w');await b.waitForTimeout(1200);await b.keyboard.up('w');assert((await b.evaluate(()=>window.__game.vehicles.current.pos.z))<handoffZ-5);console.log('PASS occupied ATV survives host handoff and keeps driving');
+
  console.log('ERRORS',JSON.stringify(errors));assert.equal(errors.length,0);
  await mkdir('output/playwright',{recursive:true});await a.screenshot({path:'output/playwright/online-host.png'});await b.screenshot({path:'output/playwright/online-guest.png'});
 } catch(e){console.error('FAIL',e.message);for(let i=0;i<clients.length;i++){console.log('CLIENT',i,await clients[i].page.evaluate(()=>{const g=window.__game;return{state:g?.state,online:g?.online&&{connected:g.online.connected,id:g.online.id,host:g.online.hostId,world:g.online.world,peers:[...g.online.peers.values()].map(p=>({id:p.id,name:p.name,ready:p.ready})),remotes:[...g.online.remotes.values()].map(b=>({name:b.name,pos:b.pos,health:b.health,alive:b.alive}))},player:g?.player&&{pos:g.player.pos,kills:g.player.kills,deaths:g.player.deaths,health:g.player.health,alive:g.player.alive},status:document.getElementById('lobby-status')?.textContent}}));}console.error('ERRORS',errors);process.exitCode=1;

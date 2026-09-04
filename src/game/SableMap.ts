@@ -18,7 +18,10 @@ export class SableMap extends RustMap {
   override groundHeight(x: number, z: number) {
     const r = Math.max(Math.abs(x), Math.abs(z));
     return smoothstep(121, 177, r) * (19 + fbm(x * .022, z * .022, 4) * 24)
-      + fbm(x * .27, z * .27, 2) * .035;
+      + fbm(x * .27, z * .27, 2) * .035
+      + (1-smoothstep(3,21,Math.hypot(x-36,z+84)))*6.5
+      + (1-smoothstep(2,15,Math.hypot(x+44,z+81)))*4.8
+      - (1-smoothstep(4,15,Math.hypot(x+12,z+96)))*3.4;
   }
   override build() {
     const M = this.makeMaterials(), B = new Builder(this.physics, this.group);
@@ -38,7 +41,7 @@ export class SableMap extends RustMap {
     (M.sand as THREE.MeshStandardMaterial).vertexColors = true;
     this.groundMesh = new THREE.Mesh(ground, M.sand); this.groundMesh.receiveShadow = true; this.group.add(this.groundMesh);
     this.physics.addStaticTrimesh(this.groundMesh, G.WORLD, { surface: 'sand' });
-    const far = new THREE.Mesh(new THREE.PlaneGeometry(1600,1600).rotateX(-Math.PI/2),M.sandFar); far.position.y=-.5; this.group.add(far);
+    const far = new THREE.Mesh(new THREE.PlaneGeometry(1600,1600).rotateX(-Math.PI/2),M.sandFar); far.position.y=-8; this.group.add(far);
     // Main service road and eastern freight road.
     B.box(M.asphalt, [224,.09,14], [0,.06,24], {tile:1, collide:false, shadow:false});
     B.box(M.asphalt, [13,.09,214], [57,.06,0], {tile:1, collide:false, shadow:false});
@@ -126,13 +129,89 @@ export class SableMap extends RustMap {
       if(x<100){ const pts=[new THREE.Vector3(x,7.6,34),new THREE.Vector3(x+13,6.7,34),new THREE.Vector3(x+26,7.6,34)];const c=new THREE.CatmullRomCurve3(pts);B.custom(M.cable,new THREE.TubeGeometry(c,10,.022,4,false),new THREE.Matrix4(),false); }
     }
     this.sign('SABLE REACH  /  RESTRICTED ZONE',0,2.7,119.45,Math.PI,14);
-    this.environmentDetail(B,M);this.scannedScenery();
+    this.environmentDetail(B,M);this.adventureRoutes(B,M);this.scannedScenery();
     B.finish();
     this.physics.step(1/60);
     this.navigation();
     const sp=[[-52,103],[22,105],[96,101],[95,23],[45,-106],[8,-75],[-50,-98],[-108,-95],[-107,5],[-104,108],[-16,30],[35,-20],[-63,-30],[91,-13],[-60,80],[19,77],[-10,-28],[38,40]];
     for(const [x,z] of sp){const i=this.nearestWaypoint(new THREE.Vector3(x,0,z));if(i>=0)this.spawns.push({pos:this.waypoints[i].pos.clone().add(new THREE.Vector3(0,.1,0)),yaw:Math.atan2(x,z)});}
     this.makeDust(); return this.group;
+  }
+  /** Traversable upper routes, a quarry trail and vehicle jumps. */
+  private adventureRoutes(B:Builder,M:Record<string,THREE.Material>){
+    // An elevated pipeline walk joins two stair approaches and a two-floor relay station.
+    const deckY=6.2;
+    B.box(M.concreteFloor,[64,.3,4],[-18,deckY,-64]);
+    for(const x of [-48,-32,-16,0,12]){
+      B.box(M.concrete,[.6,deckY,3.5],[x,deckY/2,-64]);
+      B.box(M.steelDark,[.8,.4,5],[x,deckY-.4,-64]);
+    }
+    for(const z of [-66,-62]){
+      B.box(M.yellow,[64,.09,.09],[-18,deckY+1.1,z],{collide:false});
+      for(let x=-50;x<15;x+=3) B.box(M.steelDark,[.08,1.1,.08],[x,deckY+.6,z],{collide:false});
+    }
+    this.stair(B,M,-61,-64,0,90,deckY+.15,11,3,'quarry-west');
+    this.stair(B,M,25,-64,0,270,deckY+.15,11,3,'quarry-east');
+    const path=[[-61,0],[-56,2.9],[-50,6.35],[-32,6.35],[-12,6.35],[14,6.35],[20,2.9],[25,0]];
+    this.routePoints.push(path.map(([x,y])=>new THREE.Vector3(x,y,-64)));
+    // Open workshop below, a fighting floor at 3 m, and a roof connected to the catwalk.
+    for(const y of [0,3.1,6.2])B.box(M.concreteFloor,[16,.25,14],[0,y+.1,-51]);
+    for(const x of [-8,8])for(const z of [-58,-44])B.box(M.steelDark,[.5,6.4,.5],[x,3.2,z]);
+    for(const y of [1.55,4.65]){
+      B.box(M.facade,[.3,3.1,14],[-8,y,-51]);
+      for(const x of [-5.5,5.5])B.box(M.facade,[5,2.1,.3],[x,y-.5,-44]);
+      B.box(M.steelDark,[5,.15,.6],[-5.5,y+.55,-43.8]);
+    }
+    this.stair(B,M,10,-39,0,180,3.325,7,2.5,'relay-mid');
+    this.stair(B,M,10,-47,3.325,180,3,7,2.5,'relay-roof');
+    B.box(M.concreteFloor,[4,.25,3],[9,3.2,-47]);
+    B.box(M.concreteFloor,[4,.25,3],[9,6.2,-55]);
+    B.box(M.concreteFloor,[4,.25,6],[0,6.2,-60]);
+    for(const [x,z,y]of [[-4,-49,3.325],[3,-55,6.325],[4,-47,.225],[-5,-55,.225]]){
+      B.box(M.plywood,[2,1.25,1],[x,y+.625,z]);
+      B.box(M.steelDark,[2.1,.1,1.1],[x,y+1.3,z],{collide:false});
+    }
+    this.routePoints.push([new THREE.Vector3(10,0,-39),new THREE.Vector3(10,1.7,-42.5),new THREE.Vector3(10,3.325,-46),new THREE.Vector3(3,3.325,-49)]);
+    this.routePoints.push([new THREE.Vector3(10,3.325,-47),new THREE.Vector3(10,4.8,-50.5),new THREE.Vector3(10,6.325,-54),new THREE.Vector3(0,6.325,-55),new THREE.Vector3(0,6.35,-64)]);
+    this.sign('04 / RELAY STATION',0,5.55,-43.81,0,6);
+    this.sign('QUARRY RUN  /  ATV TRAIL',-10,7.35,-61.91,0,8);
+    // Ramp vertices are shared by visible geometry and physics, so tires track the surface.
+    const ramp=(x:number,z:number,yaw:number,w:number,length:number,h:number)=>{
+      const g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.Float32BufferAttribute([-w/2,0,length/2,w/2,0,length/2,-w/2,h,-length/2,w/2,h,-length/2,-w/2,0,-length/2,w/2,0,-length/2],3));
+      g.setIndex([0,2,1,1,2,3,2,4,3,3,4,5,0,4,2,1,3,5,0,1,5,0,5,4]);
+      g.setAttribute('uv',new THREE.Float32BufferAttribute([0,length,w,length,0,0,w,0,0,h,w,h],2));g.computeVertexNormals();
+      const m=new THREE.Matrix4().makeRotationY(yaw);m.setPosition(x,.04,z);B.custom(M.concreteFloor,g,m,'trimesh','concrete');g.dispose();
+      for(const side of [-1,1]){
+        const edge=new THREE.Vector3(side*(w/2+.2),h/2+.04,0).applyAxisAngle(new THREE.Vector3(0,1,0),yaw).add(new THREE.Vector3(x,0,z));
+        B.box(M.yellow,[.22,.14,Math.hypot(length,h)],edge.toArray() as [number,number,number],{rot:[Math.atan(h/length),yaw,0],collide:false});
+      }
+    };
+    ramp(-5,-111,-Math.PI/2,7,13,2.8);
+    ramp(44,-30,Math.PI,6,12,3);
+    ramp(91,102,Math.PI/2,7,14,3.4);
+    // A wide drive-through overpass with two long drivable approaches.
+    ramp(-110,61,0,6,16,3.5);ramp(-110,32,Math.PI,6,16,3.5);
+    B.box(M.concreteFloor,[6,.3,13],[-110,3.39,46.5]);
+    for(const z of [41,52])for(const x of [-112.6,-107.4])B.box(M.concrete,[.6,3.3,.8],[x,1.65,z]);
+    // Freight overlook and low obstacles make a second upper combat lane.
+    B.box(M.concreteFloor,[30,.28,4],[89,5.5,-23]);
+    for(const x of [75,88,103]) B.box(M.steelDark,[.5,5.5,3],[x,2.75,-23]);
+    this.stair(B,M,62,-23,0,90,5.64,12,3,'freight-overlook');
+    this.routePoints.push([new THREE.Vector3(62,0,-23),new THREE.Vector3(68,2.82,-23),new THREE.Vector3(74,5.64,-23),new THREE.Vector3(89,5.64,-23),new THREE.Vector3(102,5.64,-23)]);
+    for(const x of [78,88,98])B.box(M.contBlue,[2,1,1],[x,6.14,-24]);
+    // Quarry retaining cuts, route bollards and stacked culvert shelter.
+    for(let i=0;i<7;i++){
+      const x=-31+i*5,z=-114,y=this.groundHeight(x,z);
+      B.box(M.concrete,[4.6,1.3,1.2],[x,y+.65,z]);
+    }
+    for(const [x,z]of [[-32,-94],[8,-104],[18,-77],[42,-65],[-53,-96],[76,100],[102,95],[-106,64]]){
+      const y=this.groundHeight(x,z);B.cyl(M.yellow,.13,1.2,[x,y+.6,z],{seg:8});
+      B.cyl(M.light,.14,.14,[x,y+1.12,z],{seg:8,collide:false});
+    }
+    for(const x of [-22,-18]){B.cyl(M.concrete,1.8,9,[x,1.8,-72],{rot:[Math.PI/2,0,0],seg:20,open:true,collide:false});}
+    // Functional culvert collision: side walls and ceiling leave a walkable interior.
+    for(const x of [-22,-18]){for(const dx of [-1.55,1.55])B.box(M.concrete,[.25,2.5,9],[x+dx,1.25,-72]);B.box(M.concrete,[3.3,.4,9],[x,2.7,-72]);}
   }
   private scannedScenery(){
     const place=(id:string,x:number,z:number,height:number,yaw:number,part?:number,collide=false,y=0)=>{
@@ -218,7 +297,7 @@ export class SableMap extends RustMap {
   private navigation(){
     const cells=new Map<string,number>(), down=new THREE.Vector3(0,-1,0), dirs=[[1,0],[-1,0],[0,1],[0,-1]];
     for(let x=-116;x<=116;x+=4)for(let z=-116;z<=116;z+=4){
-      const hit=this.physics.raycast(new THREE.Vector3(x,1.8,z),down,3,G.WORLD);if(!hit||hit.point.y>.55)continue;
+      const hit=this.physics.raycast(new THREE.Vector3(x,this.groundHeight(x,z)+1.8,z),down,3,G.WORLD);if(!hit||hit.point.y>this.groundHeight(x,z)+.55)continue;
       const p=hit.point.clone();let block=false;
       for(const [dx,dz]of dirs)if(this.physics.raycast(p.clone().add(new THREE.Vector3(0,1,0)),new THREE.Vector3(dx,0,dz),.5,G.WORLD)){block=true;break;}
       if(block)continue;const id=this.waypoints.length;this.waypoints.push({id,pos:p,links:[]});cells.set(x+','+z,id);
@@ -230,5 +309,5 @@ export class SableMap extends RustMap {
   }
   private makeDust(){const ps=new Float32Array(480*3);for(let i=0;i<480;i++)ps.set([(this.random()-.5)*240,1+this.random()*16,(this.random()-.5)*240],i*3);const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(ps,3));this.dust=new THREE.Points(g,new THREE.PointsMaterial({color:0xd9c9a0,size:.055,transparent:true,opacity:.2,depthWrite:false}));this.group.add(this.dust);}
   update(dt:number){if(this.dust){this.dust.position.x=(this.dust.position.x+dt*.3)%12;this.dust.position.z=Math.sin(performance.now()*.00004)*2;}}
-  sector(x:number,z:number){return x>62?'FREIGHT TERMINAL':z>42?(x< -55?'EXTRACTION YARD':'COMMAND COMPOUND'):x< -62?'TANK FARM':z< -55?'NORTH APPROACH':'REFINERY';}
+  sector(x:number,z:number){return x>62?'FREIGHT TERMINAL':z>42?(x< -55?'EXTRACTION YARD':'COMMAND COMPOUND'):x< -62?'TANK FARM':z< -55?'QUARRY / RIDGELINE':'REFINERY';}
 }

@@ -23,12 +23,12 @@
 
   <!-- MAIN MENU -->
   <div id="menu" class="screen hidden">
-    <header class="menu-nav"><a class="wordmark" href="/">C<span class="brand-slash">/</span> CALLOFFABLE</a><span class="nav-current">OPERATIONS</span><span class="nav-build">SABLE REACH <i>01.0</i></span></header>
+    <header class="menu-nav"><a class="wordmark" href="/">C<span class="brand-slash">/</span> CALLOFFABLE</a><span class="nav-current">OPERATIONS</span><span class="nav-build">SABLE REACH <i>02.0</i></span></header>
     <div class="menu-layout">
       <section class="mission-panel">
         <div class="eyebrow"><span class="live-dot"></span> NEW THEATRE OF OPERATIONS</div>
         <h1 class="operation-title" data-map-name>SABLE REACH</h1>
-        <p class="mission-copy">A forgotten refinery. A hostile horizon.<br>Every route is a different fight.</p>
+        <p class="mission-copy">Take the ridgeline. Own the upper routes.<br>Six ATVs. A quarry. A whole new way through.</p>
         <div class="map-card"><img id="map-preview" alt="Overhead tactical map"/><div class="map-card-caption"><span>TACTICAL OVERVIEW</span><b>6 SECTORS</b></div></div>
         <label class="section-label" for="map-select">BATTLEFIELD</label>
         <select id="map-select"><option value="sable">SABLE REACH · 240 × 240 M</option><option value="rust">RUST · CLASSIC 96 × 96 M</option></select>
@@ -39,7 +39,7 @@
       </section>
       <section class="armory-panel"><div class="panel-top"><div><div class="eyebrow">CHOOSE YOUR APPROACH</div><h2>YOUR LOADOUT</h2></div><span class="count-chip">10</span></div><div id="loadouts"></div><div class="armory-note"><span>01—10</span> Switch your primary and secondary in the field with <b>Q</b>.</div></section>
       <aside class="menu-right"><div id="loadout-detail"></div><div class="control-panel"><div class="section-label">INPUT DEVICE</div><div class="ctl-row"><button class="ctl-btn" data-control="mouse">MOUSE</button><button class="ctl-btn" data-control="trackpad">TRACKPAD</button></div><div class="controls">
-        <div><b>WASD</b>MOVE</div><div><b>SHIFT</b>SPRINT</div><div><b>C</b>CROUCH / SLIDE</div><div><b>SPACE</b>JUMP</div><div class="ctl-mouse"><b>LMB / RMB</b>FIRE / AIM</div><div class="ctl-trackpad"><b>F / E</b>FIRE / AIM</div><div><b>R / G</b>RELOAD / FRAG</div><div><b>3 / 4</b>UAV / AIRSTRIKE</div><div><b>TAB</b>SCOREBOARD</div></div></div></aside>
+        <div><b>WASD</b>MOVE</div><div><b>SHIFT</b>SPRINT</div><div><b>C</b>CROUCH / SLIDE</div><div><b>SPACE</b>JUMP</div><div class="ctl-mouse"><b>LMB / RMB</b>FIRE / AIM</div><div class="ctl-trackpad"><b>F / E</b>FIRE / AIM</div><div><b>R / G</b>RELOAD / FRAG</div><div><b>3 / 4</b>UAV / AIRSTRIKE</div><div><b>E</b>ENTER / EXIT ATV</div><div><b>TAB</b>SCOREBOARD</div></div></div></aside>
     </div>
     <footer class="menu-footer"><div class="footer-note"><span class="live-dot"></span> READY FOR DEPLOYMENT <small>HEADPHONES RECOMMENDED</small></div><button id="btn-online" class="btn-secondary">PRIVATE MULTIPLAYER <span>↗</span></button><button id="btn-deploy" class="btn-primary">DEPLOY SOLO <span class="key">ENTER</span></button></footer>
   </div>
@@ -110,6 +110,8 @@
 
     <div id="center-msgs"></div>
     <div id="streak"></div>
+    <button id="capture-pointer" class="hidden">CLICK TO ENTER MATCH <small>Mouse locked to game · ESC to pause</small></button>
+    <div id="vehicle-hud" class="hidden"></div>
     <div id="hint" class="mono"></div>
     <div id="respawn" class="hidden">
       <div class="rs-killed">KILLED BY <span id="killer"></span></div>
@@ -133,7 +135,7 @@
   <div id="pause" class="screen hidden">
     <div class="pause-box">
       <div class="eyebrow">PAUSED</div>
-      <div class="big-title sm">RUST</div>
+      <div class="big-title sm" data-map-name>SABLE REACH</div>
       <button id="btn-resume" class="btn-primary">RESUME</button>
       <button id="btn-loadout" class="btn-secondary">CHANGE LOADOUT</button>
       <button id="btn-quit" class="btn-secondary">END MATCH</button>
@@ -142,6 +144,8 @@
         <label>SENSITIVITY <input id="opt-sens" type="range" min="0.2" max="3" step="0.05" value="1"><span id="opt-sens-v" class="mono">1.00</span></label>
         <label>FIELD OF VIEW <input id="opt-fov" type="range" min="70" max="110" step="1" value="90"><span id="opt-fov-v" class="mono">90</span></label>
         <label>VOLUME <input id="opt-vol" type="range" min="0" max="1" step="0.05" value="0.8"><span id="opt-vol-v" class="mono">0.80</span></label>
+        <label>GRAPHICS <select id="opt-graphics"><option value="auto">AUTO · SMOOTH</option><option value="quality">FULL RESOLUTION</option></select></label>
+        <label>ADS SENSITIVITY <input id="opt-ads-sens" type="range" min="0.3" max="2" step="0.05" value="1"><span id="opt-ads-sens-v" class="mono">1.00</span></label>
         <label>RENDER SCALE <input id="opt-scale" type="range" min="0.75" max="2" step="0.25" value="1.5"><span id="opt-scale-v" class="mono">1.50</span></label>
         <label>WIND AMBIENCE <input id="opt-wind" type="range" min="0" max="2" step="0.1" value="1"><span id="opt-wind-v" class="mono">1.00</span></label>
         <label>AIM MODE <select id="opt-ads"><option value="hold">HOLD (RMB / ALT)</option><option value="toggle">TOGGLE (RMB / ALT)</option></select><span></span></label>
