@@ -6,7 +6,7 @@ import { VoiceChat } from './VoiceChat';
 import { G } from './Physics';
 import { clamp, el, smoothstep, lerp } from './util';
 import type { Game } from './Game';
-import type { VehicleState } from './Vehicles';
+import { VEHICLE_WEAPON, type VehicleState } from './Vehicles';
 import type { FieldState } from './FieldItems';
 import type { EntityHit } from './Weapons';
 
@@ -221,6 +221,12 @@ export class Online {
     if(!this.active||Date.now()<this.world.startAt)return;
     if(this.isHost){this.g.vehicles.authorize(this.id,id,action);this.broadcastWorld();}else this.send({kind:'vehicle-action',id,action});
   }
+  vehicleImpact(id:number,target:any,amount:number,from:THREE.Vector3){
+    const v=this.g.vehicles.list[id],driver=v&&this.entity(v.driver);
+    if(!this.isHost||!this.active||Date.now()<this.world.startAt||!driver?.alive||!target?.alive||driver===target)return false;
+    const driverId=v.driver,point=target.pos.toArray(),killed=this.damage(this.entityId(target),driverId,amount,'body',VEHICLE_WEAPON,from);
+    this.emit({kind:'vehicle-hit',from:driverId,p:point,killed});return killed;
+  }
   fieldClaim(id:number){if(this.isHost){this.g.fieldItems.claim(this.id,id);this.broadcastWorld();}else this.send({kind:'field-claim',id});}
   fieldGrant(to:string,id:number,health:number){this.send({kind:'field-grant',to,id,health});}
   localShot(){
@@ -253,15 +259,17 @@ export class Online {
     if(!this.isHost||!this.active)return;
     const id=this.entityId(victim);this.deathTimes.set(id,Date.now());
     if(killer&&killer!==victim){killer.kills++;killer.streak++;killer.score+=headshot?150:100;}
-    this.emit({kind:'kill',killer:this.entityId(killer),victim:id,killerName:killer?.name||'SABLE REACH',victimName:victim.name,weapon,headshot});
+    this.emit({kind:'kill',killer:this.entityId(killer),victim:id,killerName:killer?.name||'Modern Singularity 2',victimName:victim.name,weapon,headshot});
     if(killer?.kills>=this.world.limit)this.finish();
   }
   private emit(event:any){const e={...event,eventId:crypto.randomUUID()};this.events.push(e);this.events=this.events.slice(-20);this.applyEvent(e);this.broadcastWorld();}
   private applyEvent(e:any){if(this.received.has(e.eventId))return;this.received.add(e.eventId);if(this.received.size>500)this.received.delete(this.received.values().next().value!);
+    if(e.kind==='vehicle-hit')this.g.vehicles.impactFeedback(e.from,vec(e.p),e.killed);
     if(e.kind==='hurt'&&e.to===this.id&&!this.isHost){this.g.onPlayerDamaged(e.amount,this.entity(e.from)?.pos||null);}
     if(e.kind==='kill'){
       this.g.hud.feed(clean(e.killerName),clean(e.victimName),e.weapon,e.headshot,e.killer===this.id?'killer':e.victim===this.id?'victim':null);
-      if(e.killer===this.id){this.g.hud.hitmarker('kill');this.g.audio.killConfirm();this.g.hud.centerMsg(e.headshot?'HEADSHOT':'ELIMINATION',e.headshot?'+150':'+100');this.g.bestStreak=Math.max(this.g.bestStreak,this.g.player.streak);if(this.g.player.streak>=3)this.g.uavReady=true;if(this.g.player.streak>=5)this.g.airReady=true;}
+      if(e.victim===this.id&&!this.g.player.alive)this.g.hud.showRespawn(clean(e.killerName),e.weapon);
+      if(e.killer===this.id){this.g.hud.hitmarker('kill');this.g.audio.killConfirm();this.g.hud.centerMsg(e.weapon===VEHICLE_WEAPON?'ROADKILL':e.headshot?'HEADSHOT':'ELIMINATION',e.headshot?'+150':'+100');this.g.bestStreak=Math.max(this.g.bestStreak,this.g.player.streak);if(this.g.player.streak>=3)this.g.uavReady=true;if(this.g.player.streak>=5)this.g.airReady=true;}
     }
   }
   botShot(b:Bot,pos:THREE.Vector3){if(this.isHost)this.send({kind:'bot-fire',id:'bot-'+b.id,weapon:b.def.id,p:pos.toArray(),d:[Math.sin(b.aimYaw)*Math.cos(b.aimPitch),Math.sin(b.aimPitch),Math.cos(b.aimYaw)*Math.cos(b.aimPitch)]});}

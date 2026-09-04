@@ -218,7 +218,7 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 #end-stats span { font-size: 11px; letter-spacing: .3em; color: var(--dim); }
 #end .btn-primary { text-align: center; }
 
-/* Sable Reach operations interface */
+/* Modern Singularity 2 operations interface */
 :root { --accent:#d3b77a; --accent2:#eed5a0; --dim:rgba(240,238,222,.56); }
 button,select,input{font:inherit}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:4px}button:disabled{opacity:.45;cursor:wait}
 #menu{display:flex;flex-direction:column;justify-content:space-between;align-items:stretch;background:linear-gradient(90deg,rgba(8,13,13,.95),rgba(8,13,13,.76) 42%,rgba(8,13,13,.56)),linear-gradient(0deg,rgba(8,13,13,.65),transparent);overflow-y:auto}
@@ -238,3 +238,12 @@ button,select,input{font:inherit}button:focus-visible,select:focus-visible,input
 .vehicle-name{font-size:12px;letter-spacing:.26em;color:#f0c269}.vehicle-name span{font-size:9px;color:#a6b4ae;margin-left:10px;letter-spacing:.08em}.vehicle-speed{font-size:48px;line-height:1.3;font-weight:700}.vehicle-speed small{font-size:10px;color:#b2bdb5;margin-left:8px}.vehicle-boost{height:3px;background:#e7e7b822;margin:5px auto 14px;max-width:210px}.vehicle-boost i{height:100%;display:block;background:#e4ba5d;transition:width .15s linear}.vehicle-keys{font-size:10px;color:#b3beb7;letter-spacing:.04em}.vehicle-prompt{font-size:12px;letter-spacing:.13em;color:#f1d68f}.airborne{position:absolute;top:-25px;left:0;right:0;font-size:11px;letter-spacing:.3em;color:#7de7ef}
 #pause .pause-box{max-height:92vh;overflow:auto}
 #capture-pointer{pointer-events:auto;position:absolute;z-index:25;top:43%;left:50%;transform:translate(-50%,-50%);background:#17241def;border:1px solid #cfb578;color:#edd498;padding:24px 34px;letter-spacing:.13em;cursor:pointer;font-family:inherit;font-size:20px}#capture-pointer small{display:block;font-size:11px;color:#bec9bd;margin-top:12px;letter-spacing:.02em}
+
+/* Shared game wordmark, scaled for the menu and loading screen. */
+.brand-number{display:inline-flex;align-items:center;justify-content:center;min-width:27px;height:29px;margin-left:3px;background:var(--accent);color:#0b1411;font-family:Teko,sans-serif;font-size:29px;line-height:1;letter-spacing:0;padding-top:3px}
+.wordmark{white-space:nowrap;font-size:18px;letter-spacing:.08em}.menu-nav{gap:44px}
+.game-logo{white-space:nowrap}.game-logo>span{display:block;font-size:.38em;letter-spacing:.24em;line-height:1.2;margin-bottom:7px}.game-logo>b{font-weight:600;color:var(--accent)}
+.operation-title.game-logo{font-size:clamp(40px,3.75vw,64px);letter-spacing:0;margin:23px 0 17px;max-width:none}
+.big-title.game-logo{font-size:clamp(48px,9vw,110px);letter-spacing:.01em;line-height:1}
+.menu-footer{position:sticky;bottom:0;flex-shrink:0;z-index:2}
+@media(max-width:700px){.wordmark{font-size:12px;letter-spacing:.045em}.brand-number{font-size:24px;height:25px;min-width:22px}.nav-build{display:none}.menu-nav{gap:15px}.operation-title.game-logo{font-size:52px}}

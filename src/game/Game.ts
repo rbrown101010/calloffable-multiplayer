@@ -1,4 +1,4 @@
-import { Vehicles } from './Vehicles';
+import { Vehicles, VEHICLE_WEAPON } from './Vehicles';
 import { FieldItems } from './FieldItems';
 import { SableMap } from './SableMap';
 import { Online } from './Online';
@@ -340,7 +340,7 @@ export class Game {
     if (killer && killer !== victim) {
       killer.kills++; killer.streak++; killer.score += 100 + (headshot ? 50 : 0);
       if (killer === me) {
-        this.hud.centerMsg(`KILLED ${victim.name}`, '+100'); if (headshot) { this.hud.centerMsg('HEADSHOT', '+50', 'hs'); this.audio.headshotDing(); }
+        this.hud.centerMsg(weapon===VEHICLE_WEAPON?'ROADKILL':`KILLED ${victim.name}`, '+100'); if (headshot) { this.hud.centerMsg('HEADSHOT', '+50', 'hs'); this.audio.headshotDing(); }
         this.audio.killConfirm(); this.bestStreak = Math.max(this.bestStreak, me.streak);
         const s = me.streak; let msg = s === 7 ? 'UNSTOPPABLE ×7' : s === 10 ? 'GODLIKE ×10' : s === 15 ? 'NUCLEAR ×15' : s === 25 ? 'TACTICAL NUKE' : '';
         if (s === 3 && !this.uavReady) { this.uavReady = true; msg = 'UAV READY · PRESS 3'; this.audio.streakEarned(); this.voice.announce('uav_ready', 2, 0); }

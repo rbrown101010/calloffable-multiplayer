@@ -3,8 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CALLOFFABLE | Sable Reach</title>
-  <meta name="description" content="Deploy into Sable Reach. A cinematic browser FPS with ten loadouts, tactical enemies and an invite-only multiplayer lobby." />
+  <title>Modern Singularity 2</title>
+  <meta name="description" content="Modern Singularity 2. Ten loadouts, tactical enemies, drivable ATVs and invite-only multiplayer with voice chat. Deploy into the sprawling Sable Reach battlefield." />
+  <meta property="og:title" content="Modern Singularity 2" />
+  <meta property="og:description" content="Own the ridgeline. Bring your squad. A cinematic browser FPS with tactical enemies, ATV roadkills and private multiplayer." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://modern-singularity-2.vercel.app/" />
+  <meta name="theme-color" content="#0b1411" />
+  <link rel="canonical" href="https://modern-singularity-2.vercel.app/" />
   <link rel="icon" href="/favicon.svg" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
@@ -14,8 +20,8 @@
   <!-- LOADING -->
   <div id="loading" class="screen">
     <div class="ld-wrap">
-      <div class="eyebrow">SABLE REACH / OPERATIONS</div>
-      <div class="big-title">CALLOFFABLE</div>
+      <div class="eyebrow">TACTICAL MULTIPLAYER / OPERATIONS</div>
+      <div class="big-title game-logo" aria-label="Modern Singularity 2"><span>MODERN</span>SINGULARITY <b>2</b></div>
       <div class="ld-bar"><div id="ld-fill"></div></div>
       <div id="ld-text" class="mono">INITIALIZING</div>
     </div>
@@ -23,12 +29,12 @@
 
   <!-- MAIN MENU -->
   <div id="menu" class="screen hidden">
-    <header class="menu-nav"><a class="wordmark" href="/">C<span class="brand-slash">/</span> CALLOFFABLE</a><span class="nav-current">OPERATIONS</span><span class="nav-build">SABLE REACH <i>02.0</i></span></header>
+    <header class="menu-nav"><a class="wordmark" href="/">MODERN SINGULARITY <span class="brand-number">2</span></a><span class="nav-current">OPERATIONS</span><span class="nav-build">QUARRY RUN <i>02.1</i></span></header>
     <div class="menu-layout">
       <section class="mission-panel">
-        <div class="eyebrow"><span class="live-dot"></span> NEW THEATRE OF OPERATIONS</div>
-        <h1 class="operation-title" data-map-name>SABLE REACH</h1>
-        <p class="mission-copy">Take the ridgeline. Own the upper routes.<br>Six ATVs. A quarry. A whole new way through.</p>
+        <div class="eyebrow"><span class="live-dot"></span> <span data-map-name>SABLE REACH</span> / OPERATIONS</div>
+        <h1 class="operation-title game-logo" aria-label="Modern Singularity 2"><span>MODERN</span>SINGULARITY <b>2</b></h1>
+        <p class="mission-copy">Take the ridgeline. Own the upper routes.<br>Hit 45 km/h. Turn your ATV into a weapon.</p>
         <div class="map-card"><img id="map-preview" alt="Overhead tactical map"/><div class="map-card-caption"><span>TACTICAL OVERVIEW</span><b>6 SECTORS</b></div></div>
         <label class="section-label" for="map-select">BATTLEFIELD</label>
         <select id="map-select"><option value="sable">SABLE REACH · 240 × 240 M</option><option value="rust">RUST · CLASSIC 96 × 96 M</option></select>

@@ -1,5 +1,5 @@
 {
-  "name": "calloffable-multiplayer",
+  "name": "modern-singularity-2",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test:online": "node --env-file=.env.local tools/verify-online.mjs",
     "test:expansion": "node tools/verify-expansion.mjs",
+    "test:roadkills": "node --env-file=.env.local tools/verify-roadkills.mjs",
     "test:operators": "node tools/verify-operators.mjs"
   },
   "devDependencies": {

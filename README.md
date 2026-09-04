@@ -1,4 +1,6 @@
-# Calloffable — Sable Reach
+# Modern Singularity 2
+
+[Play Modern Singularity 2](https://modern-singularity-2.vercel.app)
 
 A browser FPS with a 240 × 240 m desert refinery, ten loadouts, seven tactical AI operators, and one invite-only multiplayer lobby for up to eight people.
 
@@ -16,6 +18,7 @@ Operators flank, hold angles, rush, change ranges, crouch under pressure, retrea
 ## Quarry Run update
 
 - Six Kestrel ATVs: WASD driving, steering, reverse, Space handbrake, Shift boost, mouse orbit camera, E enter/exit. Wheel suspension follows slopes and ramps launch the vehicle into the air. Single driver per ATV; abandoned vehicles return to their parking spots. Driver poses and vehicle locations are shared in multiplayer, including host handoff.
+- Run over enemies: impact damage scales with speed, with full-health roadkills at 45 km/h. Parking-speed bumps are harmless, slower collisions wound, and lethal hits let the ATV keep moving. Roadkills award the driver 100 points and count toward killstreaks in solo and multiplayer.
 - A two-floor relay station with a roof, a 64 m upper catwalk, freight overlook, drive-through overpass, five ramps, culvert shelters, 6.5 m and 4.8 m ridges, and a 3.4 m excavated quarry. New navigation links let AI reach upper routes.
 - Four medical stations, four ammunition stations, and three reusable jump pads. Supplies respawn after 22 seconds and use shared cooldowns in multiplayer.
 - ADS camera and weapon idle drift removed; raw mouse deltas, pointer recapture, FOV-matched sensitivity, and a separate ADS sensitivity slider. Recoil springs use small simulation steps to stay stable during a slow frame.
@@ -92,12 +95,15 @@ node --env-file=.env.local tools/verify-online.mjs
 TEST_URL=https://your-site.vercel.app node --env-file=.env.local tools/verify-online.mjs
 node tools/verify-operators.mjs
 node tools/verify-expansion.mjs
+node --env-file=.env.local tools/verify-roadkills.mjs
 WIDTH=2560 HEIGHT=1440 DPR=2 node tools/benchmark.mjs
 ```
 
 The multiplayer check uses two isolated Chrome contexts with fake microphone audio. It exercises invite rejection, joining, start, pose/crouch replication, exclusive vehicle seats, host and guest driving, occupied-vehicle host transfer, real bullet damage, respawn, voice packets, forced direct-media failure and radio fallback, push-to-talk, results, rematches, and host transfer. It is not an eight-device load test or a listening test of physical microphones.
 
 `verify-expansion.mjs` exercises real pointer capture/re-entry, stationary aiming, steering/boost/braking, a ramp jump and landing, dismount, supplies, and launch pads. `benchmark.mjs` samples actual browser frame and CPU timings with seven bots. Set `TEST_URL` to select the server (inspection tools use port 5180 by default).
+
+`verify-roadkills.mjs` drives real vehicle collisions against controlled targets: harmless bumps, nonlethal impacts, separation before repeat damage, two consecutive roadkills, reverse, near misses, height separation, and wall protection. With lobby keys it also verifies host-to-guest, guest-to-bot, and guest-to-host kills and shared scoring through InstantDB.
 
 `tools/puppet-preview.html` is a local inspection stage. Operator verification checks both hands against each weapon grip in standing/crouched and raised/lowered aim poses. Debug URL flags include `?noao`, `?botfreeze`, `?passive`, `?ghost`, and `?nolock` for local inspection.
 

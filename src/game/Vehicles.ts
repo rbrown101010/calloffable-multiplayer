@@ -6,6 +6,9 @@ import { clamp, damp, el, wrapAngle } from './util';
 import type { Game } from './Game';
 
 export type VehicleState = { id:number; p:number[]; yaw:number; pitch:number; roll:number; speed:number; vy:number; driver:string; grounded:boolean };
+export const VEHICLE_WEAPON='KESTREL ATV';
+// Walking-speed bumps are harmless; a direct 45 km/h hit defeats a full-health operator.
+const IMPACT_MIN_SPEED=4,IMPACT_LETHAL_SPEED=12.5;
 export type ATV = { id:number; pos:THREE.Vector3; spawn:THREE.Vector3; spawnYaw:number; yaw:number; pitch:number; roll:number; speed:number; vy:number; driver:string; grounded:boolean; model:THREE.Group; wheels:THREE.Group[]; front:THREE.Group[]; body:RAPIER.RigidBody; collider:RAPIER.Collider; target?:VehicleState; lastPacket:number; abandoned:number; steer:number; boost:number; boostLocked:boolean };
 const DOWN=new THREE.Vector3(0,-1,0),UP=new THREE.Vector3(0,1,0);
 const paint=new THREE.MeshStandardMaterial({color:0x78836b,metalness:.48,roughness:.5});
@@ -21,6 +24,7 @@ export class Vehicles {
   list:ATV[]=[];
   private engine?: {osc:OscillatorNode;harmonic:OscillatorNode;gain:GainNode;filter:BiquadFilterNode};
   private previous=-1;private actionAt=0;private cameraPos=new THREE.Vector3();private orbit=0;private elevation=.27;private lastHud='';
+  private contacts=new Map<number,Map<any,{pass:boolean}>>();
   constructor(private g:Game){
     if(g.mapName==='RUST')return;
     for(const [x,z,yaw]of [[45,29,0],[-75,31,Math.PI/2],[49,-96,Math.PI],[92,89,Math.PI/2],[-102,100,0],[19,34,Math.PI]])this.create(x,z,yaw);
@@ -57,16 +61,26 @@ export class Vehicles {
     const v:ATV={id:this.list.length,pos,spawn:pos.clone(),spawnYaw:yaw,yaw,pitch:0,roll:0,speed:0,vy:0,driver:'',grounded:true,model,wheels,front,body,collider,lastPacket:0,abandoned:0,steer:0,boost:1,boostLocked:false};
     this.g.physics.setOwner(collider,{vehicle:v,surface:'metal'});this.g.scene.add(model);this.list.push(v);this.place(v);
   }
-  reset(){this.detach();for(const v of this.list){v.pos.copy(v.spawn);v.yaw=v.spawnYaw;v.pitch=v.roll=v.speed=v.vy=0;v.driver='';v.target=undefined;v.grounded=true;v.boost=1;v.boostLocked=false;this.place(v);}}
+  reset(){this.detach();this.contacts.clear();for(const v of this.list){v.pos.copy(v.spawn);v.yaw=v.spawnYaw;v.pitch=v.roll=v.speed=v.vy=0;v.driver='';v.target=undefined;v.grounded=true;v.boost=1;v.boostLocked=false;this.place(v);}}
   snapshot():VehicleState[]{return this.list.map(v=>({id:v.id,p:v.pos.toArray(),yaw:v.yaw,pitch:v.pitch,roll:v.roll,speed:v.speed,vy:v.vy,driver:v.driver,grounded:v.grounded}));}
   apply(states:VehicleState[]){for(const s of states||[]){const v=this.list[s.id];if(!v||!this.valid(s))continue;const newlyOurs=s.driver===this.self&&v.driver!==this.self;v.driver=s.driver;if(v.driver!==this.self||newlyOurs){v.target=s;if(newlyOurs)this.copy(v,s);}}}
   private valid(s:VehicleState){return Array.isArray(s.p)&&s.p.length===3&&s.p.every(Number.isFinite)&&[s.yaw,s.pitch,s.roll,s.speed,s.vy].every(Number.isFinite)&&Math.abs(s.p[0])<119&&Math.abs(s.p[2])<119&&s.p[1]>-8&&s.p[1]<40;}
-  receiveFrame(from:string,s:VehicleState){const v=this.list[s?.id];if(!v||v.driver!==from||!this.valid(s))return;const now=performance.now(),dt=clamp((now-v.lastPacket)/1000,.066,1);if(v.pos.distanceTo(new THREE.Vector3(...s.p as [number,number,number]))>34*dt+2)return;v.lastPacket=now;v.target={...s,driver:from};this.copy(v,v.target);}
+  receiveFrame(from:string,s:VehicleState){
+    const v=this.list[s?.id];if(!this.g.online?.isHost||!v||v.driver!==from||!this.valid(s))return;
+    const now=performance.now(),elapsed=(now-v.lastPacket)/1000,dt=clamp(elapsed,.066,1);
+    const delta=new THREE.Vector3(...s.p as [number,number,number]).sub(v.pos);
+    if(delta.length()>34*dt+2)return;
+    // Validate impacts along the accepted movement, never from client-supplied damage/target IDs.
+    // Large packet gaps cannot sweep through operators who may have just spawned into the path.
+    const speed=Math.min(26,Math.max(Math.abs(v.speed),Math.abs(s.speed)),Math.hypot(delta.x,delta.z)/dt+2);
+    if(elapsed<=.35)this.sweep(v,delta,new THREE.Quaternion().setFromAxisAngle(UP,s.yaw),speed,.12);
+    v.lastPacket=now;v.target={...s,speed:clamp(s.speed,-7,26),driver:from};this.copy(v,v.target);
+  }
   authorize(who:string,id:number,action:'enter'|'exit'){
     const v=this.list[id],e=who===this.self?this.g.player:this.g.online?.entity(who);if(!v||!e)return false;
     if(action==='enter'){
       if(!e.alive||v.driver||this.list.some(v=>v.driver===who)||e.pos.distanceTo(v.pos)>4.2||Math.abs(v.speed)>3)return false;
-      v.driver=who;v.lastPacket=performance.now();v.abandoned=0;return true;
+      v.driver=who;v.lastPacket=performance.now();v.abandoned=0;this.contacts.delete(v.id);return true;
     }
     if(v.driver!==who)return false;v.driver='';return true;
   }
@@ -108,8 +122,7 @@ export class Vehicles {
     v.yaw+=v.steer*turn*dt;
     const dx=-Math.sin(v.yaw)*v.speed*dt,dz=-Math.cos(v.yaw)*v.speed*dt;
     const q=new THREE.Quaternion().setFromAxisAngle(UP,v.yaw),oldY=v.pos.y;
-    const cast=this.g.physics.world.castShape(v.pos,q,{x:dx,y:0,z:dz},v.collider.shape,0,1,false,undefined,cg(G.VEHICLE,G.WORLD|G.VEHICLE|G.BOT|G.PLAYER),v.collider,undefined,c=>this.g.physics.ownerOf(c)?.entity!==this.g.player);
-    const fraction=cast?Math.max(0,cast.time_of_impact-.03/Math.max(.03,Math.hypot(dx,dz))):1;
+    const fraction=this.sweep(v,new THREE.Vector3(dx,0,dz),q,Math.abs(v.speed));
     v.pos.x=clamp(v.pos.x+dx*fraction,-117.5,117.5);v.pos.z=clamp(v.pos.z+dz*fraction,-117.5,117.5);if(fraction<.9)v.speed*=Math.pow(.08,dt);
     const heights:number[]=[];
     for(const [x,z]of [[-.58,-.87],[.58,-.87],[-.58,.87],[.58,.87]]){
@@ -126,6 +139,43 @@ export class Vehicles {
     v.pitch=damp(v.pitch,clamp(pitch,-.55,.55),12,dt);v.roll=damp(v.roll,clamp(roll,-.45,.45),10,dt);
     // Keep shape queries in sync between the small suspension steps.
     v.body.setTranslation(v.pos,true);v.body.setRotation(q,true);v.body.setNextKinematicTranslation(v.pos);
+  }
+  /** Swept chassis queries prevent tunneling, respect walls/height, and allow lethal hits to carry through. */
+  private sweep(v:ATV,delta:THREE.Vector3,q:THREE.Quaternion,speed:number,targetDistance=.04){
+    const g=this.g,physics=g.physics,length=delta.length();if(length<1e-5)return 1;
+    let contacts=this.contacts.get(v.id);if(!contacts){contacts=new Map();this.contacts.set(v.id,contacts);}
+    // One impact per encounter. Holding the throttle against a survivor cannot repeatedly deal damage.
+    for(const [e]of contacts)if(!e.alive||Math.hypot(e.pos.x-v.pos.x,e.pos.z-v.pos.z)>3||Math.abs(e.pos.y-v.pos.y)>3)contacts.delete(e);
+    const wall=physics.world.castShape(v.pos,q,delta,v.collider.shape,0,1,false,undefined,cg(G.VEHICLE,G.WORLD|G.VEHICLE),v.collider);
+    const maxTime=wall?wall.time_of_impact:1,margin=.03/Math.max(.03,length);
+    const driver=v.driver===this.self?g.player:g.online?.entity(v.driver);
+    const seen=new Set<any>();
+    for(let i=0;i<24;i++){
+      const hit=physics.world.castShape(v.pos,q,delta,v.collider.shape,targetDistance,maxTime,false,undefined,cg(G.VEHICLE,G.BOT|G.PLAYER),v.collider,undefined,c=>{
+        const e=physics.ownerOf(c)?.entity;return !!e?.alive&&e!==driver&&!seen.has(e)&&!contacts.get(e)?.pass;
+      });
+      if(!hit)break;
+      const target=physics.ownerOf(hit.collider)?.entity;if(!target)break;
+      seen.add(target);
+      if(!contacts.has(target)){
+        const amount=speed<IMPACT_MIN_SPEED?0:Math.min(200,Math.floor(100*(speed/IMPACT_LETHAL_SPEED)**2));
+        const entry={pass:false};contacts.set(target,entry);
+        if(driver?.alive&&amount>0&&!g.match.over){
+          const point=target.pos.clone(),from=v.pos.clone().addScaledVector(delta,hit.time_of_impact);
+          if(g.online?.connected){
+            if(g.online.isHost)entry.pass=g.online.vehicleImpact(v.id,target,amount,from);
+            else entry.pass=amount>=target.health; // Predict traversal only; health and score remain host-owned.
+          }else{entry.pass=target.takeDamage(amount,driver,'body',VEHICLE_WEAPON,from);this.impactFeedback(v.driver,point,entry.pass);}
+        }
+      }
+      if(!target.alive||contacts.get(target)?.pass)continue;
+      return Math.max(0,hit.time_of_impact-margin);
+    }
+    return wall?Math.max(0,maxTime-margin):1;
+  }
+  impactFeedback(driver:string,point:THREE.Vector3,killed:boolean){
+    this.g.audio.bodyHit(point);
+    if(driver===this.self){this.g.hud.hitmarker(killed?'kill':'hit');if(this.current)this.cameraPos.y+=.12;}
   }
   private copy(v:ATV,s:VehicleState){v.pos.fromArray(s.p);v.yaw=s.yaw;v.pitch=s.pitch;v.roll=s.roll;v.speed=s.speed;v.vy=s.vy;v.grounded=s.grounded;}
   private place(v:ATV){v.model.position.copy(v.pos);v.model.rotation.set(v.pitch,v.yaw,v.roll,'YXZ');v.body.setTranslation(v.pos,true);v.body.setNextKinematicTranslation(v.pos);const q=new THREE.Quaternion().setFromAxisAngle(UP,v.yaw);v.body.setRotation(q,true);v.body.setNextKinematicRotation(q);}
