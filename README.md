@@ -1,58 +1,86 @@
-# RUST — Free-For-All · Multiplayer
+# Calloffable — Sable Reach
 
-> **This is the multiplayer build** of [calloffable-public](https://github.com/rbrown101010/calloffable-public): one password-protected lobby for up to 8 players, empty slots filled by the existing bots, and CoD-style proximity voice chat.
-> **Status: design complete, implementation not started.** The full plan, protocol, authority model and milestones are in [MULTIPLAYER.md](MULTIPLAYER.md). Server secrets are listed by name in [.env.example](.env.example).
->
-> Everything below describes the single-player game this repo starts from. It still runs as-is with `npm run dev`.
+A browser FPS with a 240 × 240 m desert refinery, ten loadouts, seven tactical AI operators, and one invite-only multiplayer lobby for up to eight people.
 
-A browser-based, Call of Duty–style first-person shooter set on a faithful recreation of the classic **Rust** map: the oil derrick tower, shipping containers, pump-house bunker, oil tank, the big pipe, ladders, stairs and a desert horizon lit by a real HDRI sky.
+## Play
 
-- **Mode:** 8-player Free-For-All against 7 AI operators (GHOST, ROACH, SOAP, PRICE, MEAT, ROYCE, OZONE) on an extended ~96 m Rust arena: the classic core plus a north container yard and watchtower, an east pump station and garage, a south trench line and truck depot, and west twin tanks with a top walkway and a hangar. Score limit is adjustable from 1 to 30 kills (default 10) or best score after 10 minutes. Three difficulty presets (Recruit / Regular / Veteran). The match ends with a **Final Killcam** replay of the winning kill from the killer's eyes (Enter to skip).
-- **Killstreaks:** 3 kills = UAV (all enemies on the radar for 30 s, press **3**), 5 kills = Airstrike (press **4**, then click/F to mark the target; five bombs run forward from the mark). Earned streaks survive death until used.
-- **Loadouts (4):** ASSAULT (SCAR-H + Desert Eagle), SNIPER (Intervention + M1911), RUSHER (MP5 + Desert Eagle, 2 frags), OVERKILL (AK-47 + SPAS-12).
-- **Voice:** CoD-style announcer (UAV online, airstrike inbound, double kill, match point, you've taken the lead, victory/defeat…), your operator's callouts (reloading, frag out, tango down) and spatialized enemy chatter, generated through Vercel AI Gateway text-to-speech (`node tools/voice.mjs`, needs `AI_GATEWAY_API_KEY`).
-- **Stack:** Vite + TypeScript + three.js (WebGL 2, PBR, 4K shadow map, SSAO, bloom, SMAA, ACES) + Rapier physics (character controller, ragdoll-free hit zones, rigid-body grenades and shell casings).
+- **Deploy solo:** choose Sable Reach or the original Rust map, a loadout, difficulty, and score limit.
+- **Private multiplayer:** open an invite link, enter a callsign, and join. Ready up; the first player hosts and starts the match. Bot fill keeps empty slots active.
+- **Voice:** microphone off by default. Enable it in the lobby or pause overlay. Optional push-to-talk uses **V**. Click a player's mic indicator to mute them locally.
+- The lobby owner can copy the invite link. Share that link only with the people you want in the session.
 
-## Run
+Sable Reach has six areas: refinery, tank farm, freight terminal, command compound, extraction yard, and north approach. Roofs, stairs, a bridge, towers, interior rooms, container lanes, and cover clusters connect them. The playable area is 6.25 times the original 96 × 96 m arena. Photograph-based PBR materials, a sunset HDR environment, and scanned rocks, military crates, and generators provide surface detail.
 
-```bash
-npm install
-npm run dev
-```
+Operators flank, hold angles, rush, change ranges, crouch under pressure, retreat to reload, and avoid live grenades. Weapon-space two-bone arm IK keeps both hands on their grips through movement and crouching; wrists and fingers use a firing grip. Helmet, headset, radio, pouch, and uniform variants distinguish the operators.
 
-Open http://localhost:5173 in Chrome (or any Chromium/Firefox/Safari with WebGL 2). Pick **MOUSE** or **TRACKPAD** controls, click **DEPLOY** — the game captures the pointer. Press **Esc** to pause.
+## Loadouts
 
-**Trackpad mode** (MacBook without a mouse): look with the trackpad, fire with **F**, toggle aim with **E**; scroll-wheel weapon switching is disabled so two-finger drift doesn't swap guns.
-
-Production build: `npm run build` then `npm run preview`.
+| Class | Primary | Secondary |
+|---|---|---|
+| Assault | SCAR-H | Desert Eagle |
+| Sniper | Intervention | M1911 |
+| Rusher | MP5 | Desert Eagle |
+| Overkill | AK-47 | SPAS-12 |
+| Marksman | SCAR Scout | M1911 |
+| Breacher | SPAS-12 | MP5 |
+| Support | AK Support | M1911 |
+| Recon | MP5 Recon | M1911 |
+| Hunter | Intervention | SPAS-12 |
+| Vanguard | SCAR-H | MP5 Recon |
 
 ## Controls
 
-| Key | Action |
-| --- | --- |
-| W A S D | Move |
-| Shift | Sprint (Shift while aiming: steady aim) |
-| Space | Jump / let go of ladder |
-| C or Ctrl | Crouch (press while sprinting to slide) |
+| Input | Action |
+|---|---|
+| WASD | Move |
+| Shift | Sprint / steady scoped aim |
+| Space | Jump / leave ladder |
+| C or Ctrl | Crouch; sprint then crouch to slide |
 | Left mouse / F | Fire |
-| Right mouse / Alt (hold) · E (toggle) | Aim down sights (scope on the Intervention) |
+| Right mouse / Alt | Aim |
+| E | Toggle aim |
 | R | Reload |
 | 1 / 2 / Q / wheel | Switch weapon |
-| G (hold to cook) | Frag grenade |
-| 3 / 4 | Call in UAV / Airstrike when earned |
+| G | Cook and throw frag |
+| 3 / 4 | UAV / airstrike when earned |
+| V | Push-to-talk, when selected |
 | Tab | Scoreboard |
-| Esc | Pause / settings (sensitivity, FOV, volume, render scale, wind ambience, aim mode) |
+| Esc | Pause / settings / multiplayer controls |
 
-Walk into a ladder to climb it. Head-shots do extra damage; the Intervention is a one-shot kill to the head or body. A red grenade icon around the crosshair points at any live grenade within 9 m.
+In the loadout menu, keys **1–9, 0** select the ten classes. Trackpad mode supports **F** to fire and **E** to aim. Desktop keyboard and mouse recommended; no touch controls are implemented.
 
-## Debug URL flags
+## Development
 
-`?noao=1` disable SSAO · `?god=1` invulnerable · `?ghost=1` bots ignore you · `?botfreeze=1` bots stand still · `?nolock=1` no pointer lock (automation)
+```sh
+npm ci
+cp .env.example .env.local
+# Fill in server credentials for private multiplayer. Solo needs no credentials.
+npm run dev
+```
 
-## Credits
+Open `http://127.0.0.1:5178`. `npm run build` type-checks and builds the site. The dev server includes `/api/lobby`; production uses a Vercel serverless function. `npm run preview` serves the static build only and does not emulate that API.
 
-See `public/CREDITS.md` — every third-party asset is CC0 / CC-BY and credited there.
+- Stack: TypeScript, Vite, Three.js, Rapier, InstantDB, WebRTC and Web Audio.
+- `api/lobby.mjs`: server-side invite check and scoped user token issuance.
+- `src/game/Online.ts`: presence, lobby, match authority, replication, host transfer.
+- `src/game/VoiceChat.ts`: opt-in voice, mute/PTT, signaling and radio fallback.
+- `src/game/SableMap.ts`: deterministic map layout and navigation.
+- `src/game/Puppet.ts`: animated operators and weapon grip IK.
+- `public/CREDITS.md`: retained asset attribution plus new CC0 scenery sources.
 
-## License
+Read [MULTIPLAYER.md](MULTIPLAYER.md) for deployment, session authority, and operating limits. Server secrets must never use a `VITE_` prefix.
 
-Code is MIT (see `LICENSE`). Third-party assets keep their own licenses, all listed with attribution in `public/CREDITS.md`. This is a non-commercial fan tribute; "Call of Duty" and "Rust" are trademarks of Activision.
+## Verification
+
+```sh
+node --env-file=.env.local tools/verify-online.mjs
+# Against a deployed build:
+TEST_URL=https://your-site.vercel.app node --env-file=.env.local tools/verify-online.mjs
+node tools/verify-operators.mjs
+```
+
+The multiplayer check uses two isolated Chrome contexts with fake microphone audio. It exercises invite rejection, joining, start, pose/crouch replication, real bullet damage, respawn, voice packets, forced direct-media failure and radio fallback, push-to-talk, results, rematches, and host transfer. It is not an eight-device load test or a listening test of physical microphones.
+
+`tools/puppet-preview.html` is a local inspection stage. Operator verification checks both hands against each weapon grip in standing/crouched and raised/lowered aim poses. Debug URL flags include `?noao`, `?botfreeze`, `?passive`, `?ghost`, and `?nolock` for local inspection.
+
+Code is MIT. Third-party assets retain their individual licenses. The retained Rust map is a fan tribute; Call of Duty and Rust are trademarks of Activision.

@@ -20,6 +20,7 @@ export class Input {
   constructor(el: HTMLElement) {
     this.el = el;
     window.addEventListener('keydown', (e) => {
+      if ((e.target as HTMLElement)?.matches('input, textarea, select, [contenteditable]')) return;
       if (['Space', 'Tab', 'KeyR', 'KeyQ', 'KeyG', 'KeyC', 'KeyF', 'AltLeft', 'AltRight'].includes(e.code)) e.preventDefault();
       if (e.repeat) return;
       this.keys.add(e.code);

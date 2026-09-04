@@ -25,15 +25,15 @@ export function setupPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, cam
   let n8ao: any = null;
   if (opts.ao) {
     n8ao = new N8AOPostPass(scene, camera, innerWidth, innerHeight);
-    n8ao.configuration.aoRadius = 1.6; n8ao.configuration.distanceFalloff = 1.2; n8ao.configuration.intensity = 2.2;
+    n8ao.configuration.aoRadius = 1.6; n8ao.configuration.distanceFalloff = 1.2; n8ao.configuration.intensity = 1.8;
     n8ao.configuration.halfRes = true; n8ao.configuration.gammaCorrection = false; n8ao.configuration.color = new THREE.Color(0x0a0705);
     n8ao.setQualityMode('Medium');
     composer.addPass(n8ao);
   }
   composer.addPass(new ViewModelPass(scene, weaponCam));
-  const bloom = new BloomEffect({ intensity: 0.45, luminanceThreshold: 0.9, luminanceSmoothing: 0.25, mipmapBlur: true, radius: 0.55 });
-  const chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0.0005, 0.0005), radialModulation: true, modulationOffset: 0.35 });
-  const vignette = new VignetteEffect({ offset: 0.3, darkness: 0.5 });
+  const bloom = new BloomEffect({ intensity: 0.28, luminanceThreshold: 0.9, luminanceSmoothing: 0.25, mipmapBlur: true, radius: 0.55 });
+  const chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0.00012, 0.00012), radialModulation: true, modulationOffset: 0.35 });
+  const vignette = new VignetteEffect({ offset: 0.3, darkness: 0.36 });
   const tone = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
   const grade = new BrightnessContrastEffect({ brightness: 0.0, contrast: 0.06 });
   const sat = new HueSaturationEffect({ saturation: -0.06 });

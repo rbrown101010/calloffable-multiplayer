@@ -1,0 +1,406 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.2.57",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "namaqualand_rocks_02_a",
+      "translation": [
+        -1.2395724058151245,
+        0,
+        0
+      ]
+    },
+    {
+      "mesh": 1,
+      "name": "namaqualand_rocks_02_b",
+      "translation": [
+        -0.8101965188980103,
+        0,
+        0
+      ]
+    },
+    {
+      "mesh": 2,
+      "name": "namaqualand_rocks_02_c",
+      "translation": [
+        -0.40107887983322144,
+        0,
+        0
+      ]
+    },
+    {
+      "mesh": 3,
+      "name": "namaqualand_rocks_02_d"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "namaqualand_rocks_02",
+      "normalTexture": {
+        "index": 0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicFactor": 0,
+        "metallicRoughnessTexture": {
+          "index": 2
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "realCap_Model_2.006",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "realCap_Model_2.009",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 4,
+            "NORMAL": 5,
+            "TEXCOORD_0": 6
+          },
+          "indices": 7,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "realCap_Model_2.014",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TEXCOORD_0": 10
+          },
+          "indices": 11,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "realCap_Model_2.002",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 12,
+            "NORMAL": 13,
+            "TEXCOORD_0": 14
+          },
+          "indices": 15,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/jpeg",
+      "name": "namaqualand_rocks_02_nor_gl",
+      "uri": "textures/namaqualand_rocks_01_nor_gl_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "namaqualand_rocks_02_diff",
+      "uri": "textures/namaqualand_rocks_01_diff_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "namaqualand_rocks_02_rough",
+      "uri": "textures/namaqualand_rocks_01_arm_1k.jpg"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 7260,
+      "max": [
+        0.11458295583724976,
+        0.15129396319389343,
+        0.10848097503185272
+      ],
+      "min": [
+        -0.11228109896183014,
+        -0.0011913850903511047,
+        -0.10847878456115723
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 7260,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 7260,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 40746,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 12996,
+      "max": [
+        0.10107555985450745,
+        0.08294308930635452,
+        0.08439360558986664
+      ],
+      "min": [
+        -0.11864727735519409,
+        0.00003833766095340252,
+        -0.07890995591878891
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 12996,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 12996,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5123,
+      "count": 74376,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 11794,
+      "max": [
+        0.10676795244216919,
+        0.08652986586093903,
+        0.08384346216917038
+      ],
+      "min": [
+        -0.10817897319793701,
+        0.0012882249429821968,
+        -0.08370362222194672
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 11794,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 11794,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5123,
+      "count": 67296,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 12,
+      "componentType": 5126,
+      "count": 12897,
+      "max": [
+        0.09638237953186035,
+        0.12481027096509933,
+        0.08423154056072235
+      ],
+      "min": [
+        -0.1031341552734375,
+        0.0007833046838641167,
+        -0.07309942692518234
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 13,
+      "componentType": 5126,
+      "count": 12897,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 14,
+      "componentType": 5126,
+      "count": 12897,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 15,
+      "componentType": 5123,
+      "count": 74730,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 87120,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 87120,
+      "byteOffset": 87120,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 58080,
+      "byteOffset": 174240,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 81492,
+      "byteOffset": 232320,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 155952,
+      "byteOffset": 313812,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 155952,
+      "byteOffset": 469764,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 103968,
+      "byteOffset": 625716,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 148752,
+      "byteOffset": 729684,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 141528,
+      "byteOffset": 878436,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 141528,
+      "byteOffset": 1019964,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 94352,
+      "byteOffset": 1161492,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 134592,
+      "byteOffset": 1255844,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 154764,
+      "byteOffset": 1390436,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 154764,
+      "byteOffset": 1545200,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 103176,
+      "byteOffset": 1699964,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 149460,
+      "byteOffset": 1803140,
+      "target": 34963
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 1952600,
+      "uri": "namaqualand_rocks_01.bin"
+    }
+  ]
+}

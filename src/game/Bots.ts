@@ -17,6 +17,7 @@ const CAP_HH = 0.54, CAP_R = 0.36;
 export const DEBUG = { freeze: new URLSearchParams(location.search).has('botfreeze'), passive: new URLSearchParams(location.search).has('passive'), ghost: new URLSearchParams(location.search).has('ghost') };
 
 export class Bot {
+  role: 'flanker' | 'anchor' | 'rusher' | 'marksman' = 'flanker'; stance = false; now = 0; tacticT = 0;
   id: number; name: string; loadout: Loadout; def: WeaponDef; mag: number; reserve: number; skill: number;
   body: RAPIER.RigidBody; collider: RAPIER.Collider; cc: RAPIER.KinematicCharacterController; hitHead: RAPIER.Collider; hitBody: RAPIER.Collider; hitLegs: RAPIER.Collider;
   pos = new THREE.Vector3(); vel = new THREE.Vector3(); yaw = 0; aimYaw = 0; aimPitch = 0; grounded = false;
@@ -34,6 +35,7 @@ export class Bot {
   private _v = new THREE.Vector3(); private _w = new THREE.Vector3();
 
   constructor(public physics: Physics, id: number, name: string, loadout: Loadout, skill: number) {
+    this.role = (['flanker', 'anchor', 'rusher', 'marksman'] as const)[(id - 1) % 4];
     this.id = id; this.name = name; this.loadout = loadout; this.skill = skill;
     this.def = WEAPONS[loadout.primary]; this.mag = this.def.mag; this.reserve = this.def.reserve * 4;
     const R = physics.R;
@@ -49,18 +51,19 @@ export class Bot {
     this.cc = physics.world.createCharacterController(0.03); this.cc.enableAutostep(0.5, 0.25, true); this.cc.enableSnapToGround(0.4); this.cc.setMaxSlopeClimbAngle(56 * DEG); this.cc.setMinSlopeSlideAngle(62 * DEG);
   }
 
-  get feetY() { return this.pos.y - CAP_HH - CAP_R; }
-  get eyePos() { return this._v.set(this.pos.x, this.pos.y + 0.66, this.pos.z); }
+  get feetY() { return this.pos.y - (this.stance ? .2 : CAP_HH) - CAP_R; }
+  get eyePos() { return this._v.set(this.pos.x, this.pos.y + (this.stance ? .43 : .66), this.pos.z); }
   get chestPos() { return this._w.set(this.pos.x, this.pos.y + 0.25, this.pos.z); }
-  get headPos() { return new THREE.Vector3(this.pos.x, this.pos.y + 0.66, this.pos.z); }
+  get headPos() { return new THREE.Vector3(this.pos.x, this.pos.y + (this.stance ? .43 : .66), this.pos.z); }
 
   async loadVisuals(scene: THREE.Scene) {
     this.puppet = await SoldierPuppet.create(scene);
     await this.puppet.setWeapon(this.def);
-    this.muzzle = this.puppet.muzzle;
+    this.puppet.equip(this.id); this.muzzle = this.puppet.muzzle;
   }
 
   spawnAt(p: THREE.Vector3, yaw: number) {
+    this.stance = false; this.hitLegs.setTranslationWrtParent({x:0,y:-.5,z:0}); this.collider.setHalfHeight(CAP_HH); this.hitHead.setTranslationWrtParent({x:0,y:.66,z:0}); this.hitBody.setTranslationWrtParent({x:0,y:.2,z:0});
     this.pos.set(p.x, p.y + CAP_HH + CAP_R + 0.05, p.z); this.vel.set(0, 0, 0); this.yaw = yaw; this.aimYaw = yaw; this.aimPitch = 0;
     this.body.setNextKinematicTranslation(this.pos); this.body.setTranslation(this.pos, true);
     this.health = 100; this.alive = true; this.state = 'patrol'; this.target = null; this.path = []; this.node = -1; this.goal = -1; this.reloading = false; this.mag = this.def.mag; this.crouch = false; this.climbing = false;
@@ -73,7 +76,7 @@ export class Bot {
   onDeath?: (attacker: any, weapon: string, headshot: boolean) => void;
   takeDamage(amount: number, attacker: any, part: string, weapon = '', _from: THREE.Vector3 | null = null): boolean {
     if (!this.alive) return false;
-    this.health -= amount; this.hurtT = performance.now() / 1000; this.lastDamageFrom = attacker; this.flinch = Math.min(1, this.flinch + amount / 60);
+    this.health -= amount; this.hurtT = this.now; this.lastDamageFrom = attacker; this.flinch = Math.min(1, this.flinch + amount / 60);
     const src = _from ?? (attacker && attacker.pos ? attacker.pos : null);
     if (src) { this.deathDir.set(this.pos.x - src.x, 0, this.pos.z - src.z); if (this.deathDir.lengthSq() < 1e-4) this.deathDir.set(0, 0, 1); this.deathDir.normalize(); }
     this.onHurt?.();
@@ -123,6 +126,7 @@ export class BotManager {
   /** Live grenade positions (fed by the game) that bots try to get away from. */
   dangerZones: THREE.Vector3[] = [];
   playerTarget!: Target;
+  extraTargets: Target[] = [];
   private _tmp = new THREE.Vector3(); private _dir = new THREE.Vector3();
   constructor(private physics: Physics, private scene: THREE.Scene, private map: RustMap, private bullets: Bullets, private effects: Effects, private audio: AudioManager, private player: Player, private events: BotEvents) {}
 
@@ -132,7 +136,7 @@ export class BotManager {
       const b = new Bot(this.physics, i + 1, names[i], lo, skills[i]);
       await b.loadVisuals(this.scene);
       b.onHurt = () => this.events.onHurt?.(b);
-      b.puppet?.setTint([0xd8cdb5, 0xb9b3a4, 0xcbbf9d, 0xa9a08c, 0xd0c4a8, 0xbdb39b, 0xc9c0ae][i % 7]);
+
       this.bots.push(b);
     }
   }
@@ -142,6 +146,7 @@ export class BotManager {
     const others: THREE.Vector3[] = [];
     if (this.player.alive && forEntity !== this.player) others.push(this.player.pos);
     for (const b of this.bots) if (b.alive && b !== forEntity) others.push(b.pos);
+    for (const t of this.extraTargets) if (t.alive && t.entity !== forEntity) others.push(t.pos);
     let best = this.map.spawns[0], bs = -1;
     for (const s of this.map.spawns) {
       let d = 1e9; for (const o of others) d = Math.min(d, s.pos.distanceTo(o));
@@ -161,6 +166,7 @@ export class BotManager {
     const list: Target[] = [];
     if (this.player.alive && !DEBUG.ghost) list.push({ entity: this.player, pos: this.player.pos.clone().add(new THREE.Vector3(0, 0.15, 0)), head: this.player.eyePos.clone(), alive: true, name: 'YOU' });
     for (const b of this.bots) if (b !== forBot && b.alive) list.push({ entity: b, pos: b.chestPos.clone(), head: b.headPos, alive: true, name: b.name });
+    for (const t of this.extraTargets) if (t.entity.alive) list.push({...t, pos:t.entity.pos.clone(), head:t.entity.eyePos.clone()});
     return list;
   }
 
@@ -168,7 +174,8 @@ export class BotManager {
     for (const b of this.bots) {
       if (!b.alive) { b.respawnT -= dt; if (b.respawnT <= 0) { const s = this.pickSpawn(b); b.spawnAt(s.pos, s.yaw + Math.PI); } b.updateVisuals(dt); continue; }
       if (this.frozen) { b.updateVisuals(dt); continue; }
-      this.think(b, dt, time);
+      b.now = time; this.think(b, dt, time);
+      this.applyStance(b);
       this.move(b, dt);
       b.updateVisuals(dt);
       // footsteps (positional, so the player can hear enemies approach)
@@ -185,7 +192,7 @@ export class BotManager {
       b.perceiveT = 0.12;
       const eye = b.eyePos.clone(); let best: Target | null = null, bestD = 1e9; let sawCurrent = false;
       for (const t of this.targets(b)) {
-        const d = eye.distanceTo(t.pos); if (d > 75) continue;
+        const d = eye.distanceTo(t.pos); if (d > (b.role === 'marksman' ? 135 : 100)) continue;
         const dir = this._dir.subVectors(t.pos, eye).normalize();
         const fwd = new THREE.Vector3(Math.sin(b.aimYaw), 0, Math.cos(b.aimYaw));
         const ang = Math.acos(clamp(fwd.dot(new THREE.Vector3(dir.x, 0, dir.z).normalize()), -1, 1));
@@ -201,7 +208,7 @@ export class BotManager {
       if (best) {
         if (!b.target || (b.target.entity !== best.entity && (!sawCurrent || bestD < 8))) { const fresh = !b.target; b.target = best; b.reactionT = lerp(0.55, 0.18, b.skill) + rand(0, 0.2); b.seeT = 0; if (fresh) this.events.onSpot?.(b); }
         else { b.target.pos.copy(best.pos); b.target.head.copy(best.head); }
-        b.visible = true; b.lastSeen.copy(best.pos); b.lastSeenT = time; b.state = b.state === 'retreat' ? 'retreat' : 'engage';
+        b.visible = true; b.lastSeen.copy(best.pos); b.lastSeenT = time; if (b.state !== 'retreat' && b.state !== 'cover') b.state = 'engage';
       } else {
         b.visible = false;
         if (b.target && time - b.lastSeenT > 6) { b.target = null; if (b.state === 'engage') b.state = 'hunt'; }
@@ -216,6 +223,9 @@ export class BotManager {
     }
     if (b.retreatT > 0) { b.retreatT -= dt; if (b.retreatT <= 0 && b.state === 'retreat') b.state = b.target ? 'engage' : 'patrol'; }
     b.coverCd -= dt; b.dangerT -= dt;
+    if (b.state === 'cover') b.crouch = true;
+    if (b.state === 'retreat' || b.dangerT > 0 || b.state === 'patrol') b.crouch = false;
+    if (time - b.hurtT > 6 && b.health < 100 && !b.visible) b.health = Math.min(100,b.health+dt*12);
     // grenade avoidance: sprint away from any live grenade nearby
     for (const gz of this.dangerZones) {
       const d = b.pos.distanceTo(gz);
@@ -281,17 +291,34 @@ export class BotManager {
       if (b.pos.distanceTo(b.lastSeen) < 3 && time - b.lastSeenT > 2) { b.state = 'patrol'; b.target = null; }
     } else if (b.state === 'engage') {
       const dist = b.target ? b.pos.distanceTo(b.target.pos) : 99;
-      const wantDist = b.def.cls === 'sniper' ? 25 : b.def.cls === 'shotgun' || b.def.cls === 'smg' ? 7 : 13;
+      const wantDist = b.def.cls === 'sniper' ? 45 : b.role === 'rusher' || b.def.cls === 'shotgun' ? 7 : b.role === 'marksman' ? 32 : 17;
       b.strafeT -= dt;
-      if (b.strafeT <= 0) { b.strafeT = rand(0.5, 1.4); b.strafeDir = pick([-1, 1, 0, 0]); b.crouch = Math.random() < 0.2 * (1 - b.skill * 0.5); }
+      if (b.strafeT <= 0) { b.strafeT = rand(.9, 2.5); b.strafeDir = b.role === 'anchor' ? pick([0,0,-1,1]) : pick([-1,1]); b.crouch = Math.random() < (b.role === 'anchor' ? .78 : b.role === 'marksman' ? .65 : b.role === 'rusher' ? .23 : .45); }
+      b.tacticT -= dt;
+      if (b.role === 'flanker' && b.tacticT <= 0 && b.target && dist > 12) {
+        const dir = b.target.pos.clone().sub(b.pos).setY(0).normalize();
+        const flank = b.target.pos.clone().add(new THREE.Vector3(dir.z,0,-dir.x).multiplyScalar((b.id % 2 ? 1 : -1) * 18));
+        this.setGoal(b,this.map.nearestWaypoint(flank)); b.tacticT = rand(5,9); b.repathT = 4;
+      }
       // approach / keep distance using waypoints if far, else direct micro movement
       if (dist > wantDist * 1.6 && (needGoal || b.repathT <= 0)) { this.setGoal(b, this.map.nearestWaypoint(b.target!.pos)); b.repathT = 1.2; }
-      else if (dist <= wantDist * 1.6) { b.path = []; b.goal = -1; }
+      else if (dist <= wantDist * 1.6 && !(b.role === 'flanker' && b.repathT > 0)) { b.path = []; b.goal = -1; }
     } else if (b.state === 'retreat') {
       if (needGoal || b.repathT <= 0) { this.setGoal(b, this.fleeGoal(b)); b.repathT = 2; }
     }
   }
 
+  private applyStance(b: Bot) {
+    const crouch = b.crouch && !b.climbing;
+    if(crouch === b.stance)return;
+    if(!crouch && this.physics.raycast(b.eyePos.clone(),new THREE.Vector3(0,1,0),.7,G.WORLD)){b.crouch=true;return;}
+    b.pos.y += crouch ? -.34 : .34; b.stance = crouch;
+    b.collider.setHalfHeight(crouch ? .2 : CAP_HH);
+    b.hitHead.setTranslationWrtParent({x:0,y:crouch?.43:.66,z:0});
+    b.hitBody.setTranslationWrtParent({x:0,y:crouch?.08:.2,z:0});
+    b.hitLegs.setTranslationWrtParent({x:0,y:crouch?-.26:-.5,z:0});
+    b.body.setTranslation(b.pos,true); b.body.setNextKinematicTranslation(b.pos);
+  }
   private startReload(b: Bot, extra: number) { b.reloading = true; b.reloadT = b.def.reloadEmptyTime + extra; this.events.onReload?.(b); }
 
   /** Difficulty preset: adjusts reaction/accuracy (skill) and damage dealt. */
@@ -380,7 +407,7 @@ export class BotManager {
       // strafe around the target
       const fwd = new THREE.Vector3(Math.sin(b.aimYaw), 0, Math.cos(b.aimYaw)); const right = new THREE.Vector3(fwd.z, 0, -fwd.x);
       const dist = b.pos.distanceTo(b.target.pos);
-      const wantDist = b.def.cls === 'sniper' ? 25 : b.def.cls === 'shotgun' || b.def.cls === 'smg' ? 7 : 13;
+      const wantDist = b.def.cls === 'sniper' ? 45 : b.role === 'rusher' || b.def.cls === 'shotgun' ? 7 : b.role === 'marksman' ? 32 : 17;
       if (wish.lengthSq() === 0) {
         if (dist > wantDist * 1.15) wish.add(fwd); else if (dist < wantDist * 0.6) wish.sub(fwd);
         wish.addScaledVector(right, b.strafeDir);
@@ -392,6 +419,11 @@ export class BotManager {
     if (speed > 0) { if (b.pos.distanceTo(b.lastPos) < 0.05 * dt * 60) b.stuckT += dt; else b.stuckT = 0; if (b.stuckT > 1.2) { b.stuckT = 0; b.path = []; b.goal = -1; b.repathT = 0; b.vel.y = 5; } }
     b.lastPos.copy(b.pos);
     // velocity integrate
+    if (b.crouch) speed *= .64;
+    if (b.role === 'rusher') speed *= 1.12;
+    // Separation prevents operators from stacking in doorways.
+    for (const o of this.bots) { if(o===b||!o.alive)continue; const d=b.pos.distanceTo(o.pos); if(d>.05&&d<1.5)wish.addScaledVector(b.pos.clone().sub(o.pos).setY(0).normalize(),(1.5-d)*.6); }
+    if(wish.lengthSq()>1)wish.normalize();
     const target = wish.multiplyScalar(speed);
     b.vel.x = damp(b.vel.x, target.x, 9, dt); b.vel.z = damp(b.vel.z, target.z, 9, dt);
     if (!b.climbing) b.vel.y -= 19.5 * dt;

@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RUST — Free-For-All</title>
+  <title>CALLOFFABLE | Sable Reach</title>
+  <meta name="description" content="Deploy into Sable Reach. A cinematic browser FPS with ten loadouts, tactical enemies and an invite-only multiplayer lobby." />
+  <link rel="icon" href="/favicon.svg" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
@@ -12,8 +14,8 @@
   <!-- LOADING -->
   <div id="loading" class="screen">
     <div class="ld-wrap">
-      <div class="eyebrow">MULTIPLAYER · FREE-FOR-ALL</div>
-      <div class="big-title">RUST</div>
+      <div class="eyebrow">SABLE REACH / OPERATIONS</div>
+      <div class="big-title">CALLOFFABLE</div>
       <div class="ld-bar"><div id="ld-fill"></div></div>
       <div id="ld-text" class="mono">INITIALIZING</div>
     </div>
@@ -21,34 +23,39 @@
 
   <!-- MAIN MENU -->
   <div id="menu" class="screen hidden">
-    <div class="menu-left">
-      <div class="eyebrow">MULTIPLAYER · FREE-FOR-ALL</div>
-      <div class="big-title">RUST</div>
-      <div class="menu-sub" id="menu-sub">7 ENEMIES · FIRST TO 10 KILLS · 10:00</div>
-      <div class="section-label">CONTROLS</div>
-      <div class="ctl-row"><button class="ctl-btn" data-control="mouse">MOUSE</button><button class="ctl-btn" data-control="trackpad">TRACKPAD</button></div>
-      <div class="section-label">SCORE LIMIT</div>
-      <div class="score-row"><input id="opt-score" type="range" min="1" max="30" step="1" value="10"><div id="opt-score-v" class="score-v">10</div><span class="score-l">KILLS</span></div>
-      <div class="section-label">DIFFICULTY</div>
-      <div class="ctl-row"><button class="ctl-btn" data-diff="recruit">RECRUIT</button><button class="ctl-btn" data-diff="regular">REGULAR</button><button class="ctl-btn" data-diff="veteran">VETERAN</button></div>
-      <div class="section-label">SELECT LOADOUT</div>
-      <div id="loadouts"></div>
-      <button id="btn-deploy" class="btn-primary">DEPLOY <span class="key">ENTER</span></button>
-      <div class="controls">
-        <div><b>WASD</b>MOVE</div><div><b>SHIFT</b>SPRINT</div><div><b>C</b>CROUCH · SLIDE</div><div><b>SPACE</b>JUMP</div>
-        <div class="ctl-mouse"><b>LMB</b>FIRE</div><div class="ctl-mouse"><b>RMB · ALT</b>AIM (HOLD)</div>
-        <div class="ctl-trackpad"><b>F</b>FIRE (HOLD)</div><div class="ctl-trackpad"><b>E</b>AIM (TOGGLE)</div>
-        <div><b>R</b>RELOAD</div><div><b>1 · 2 · Q</b>SWITCH</div>
-        <div><b>G</b>FRAG</div><div><b>3 · 4</b>UAV · AIRSTRIKE</div><div><b>TAB</b>SCOREBOARD</div><div><b>ESC</b>PAUSE</div>
-      </div>
+    <header class="menu-nav"><a class="wordmark" href="/">C<span class="brand-slash">/</span> CALLOFFABLE</a><span class="nav-current">OPERATIONS</span><span class="nav-build">SABLE REACH <i>01.0</i></span></header>
+    <div class="menu-layout">
+      <section class="mission-panel">
+        <div class="eyebrow"><span class="live-dot"></span> NEW THEATRE OF OPERATIONS</div>
+        <h1 class="operation-title" data-map-name>SABLE REACH</h1>
+        <p class="mission-copy">A forgotten refinery. A hostile horizon.<br>Every route is a different fight.</p>
+        <div class="map-card"><img id="map-preview" alt="Overhead tactical map"/><div class="map-card-caption"><span>TACTICAL OVERVIEW</span><b>6 SECTORS</b></div></div>
+        <label class="section-label" for="map-select">BATTLEFIELD</label>
+        <select id="map-select"><option value="sable">SABLE REACH · 240 × 240 M</option><option value="rust">RUST · CLASSIC 96 × 96 M</option></select>
+        <div class="section-label">SOLO MATCH</div>
+        <div class="menu-sub" id="menu-sub">7 ENEMIES · FIRST TO 20 KILLS · 10:00</div>
+        <div class="score-row"><input aria-label="Solo score limit" id="opt-score" type="range" min="1" max="30" step="1" value="20"><div id="opt-score-v" class="score-v">20</div><span class="score-l">KILLS</span></div>
+        <div class="ctl-row"><button class="ctl-btn" data-diff="recruit">RECRUIT</button><button class="ctl-btn" data-diff="regular">REGULAR</button><button class="ctl-btn" data-diff="veteran">VETERAN</button></div>
+      </section>
+      <section class="armory-panel"><div class="panel-top"><div><div class="eyebrow">CHOOSE YOUR APPROACH</div><h2>YOUR LOADOUT</h2></div><span class="count-chip">10</span></div><div id="loadouts"></div><div class="armory-note"><span>01—10</span> Switch your primary and secondary in the field with <b>Q</b>.</div></section>
+      <aside class="menu-right"><div id="loadout-detail"></div><div class="control-panel"><div class="section-label">INPUT DEVICE</div><div class="ctl-row"><button class="ctl-btn" data-control="mouse">MOUSE</button><button class="ctl-btn" data-control="trackpad">TRACKPAD</button></div><div class="controls">
+        <div><b>WASD</b>MOVE</div><div><b>SHIFT</b>SPRINT</div><div><b>C</b>CROUCH / SLIDE</div><div><b>SPACE</b>JUMP</div><div class="ctl-mouse"><b>LMB / RMB</b>FIRE / AIM</div><div class="ctl-trackpad"><b>F / E</b>FIRE / AIM</div><div><b>R / G</b>RELOAD / FRAG</div><div><b>3 / 4</b>UAV / AIRSTRIKE</div><div><b>TAB</b>SCOREBOARD</div></div></div></aside>
     </div>
-    <div class="menu-right">
-      <div id="loadout-detail"></div>
+    <footer class="menu-footer"><div class="footer-note"><span class="live-dot"></span> READY FOR DEPLOYMENT <small>HEADPHONES RECOMMENDED</small></div><button id="btn-online" class="btn-secondary">PRIVATE MULTIPLAYER <span>↗</span></button><button id="btn-deploy" class="btn-primary">DEPLOY SOLO <span class="key">ENTER</span></button></footer>
+  </div>
+  <div id="lobby" class="screen hidden">
+    <div class="lobby-box"><div class="panel-top"><div><div class="eyebrow">INVITE ONLY / ONE LOBBY</div><h2>PRIVATE OPERATIONS</h2></div><button id="lobby-close" class="icon-btn" aria-label="Close lobby">×</button></div>
+      <p class="mission-copy">Bring your squad. Pick your loadout. Own the refinery.</p>
+      <div id="join-fields"><label for="callsign">YOUR CALLSIGN</label><input id="callsign" maxlength="16" autocomplete="nickname" placeholder="OPERATOR"/><label for="invite-code">INVITATION CODE</label><input id="invite-code" type="password" autocomplete="off" placeholder="Paste your code or open an invite link"/><button id="lobby-join" class="btn-primary">JOIN PRIVATE LOBBY <span>↗</span></button><p class="lobby-note">An invitation from the owner is required. Your microphone stays off until you enable it.</p></div>
+      <div id="lobby-session" class="hidden"><div class="roster-head"><span id="lobby-count">0 / 8 OPERATORS</span><button id="lobby-invite" class="text-btn">COPY INVITE LINK ↗</button></div><div id="lobby-roster"></div>
+        <div id="host-settings" class="lobby-settings"><label>SCORE LIMIT<select id="lobby-limit"><option>10</option><option selected>20</option><option>30</option></select></label><label>BOT FILL<select id="lobby-bots"><option value="0">HUMANS ONLY</option><option value="3">UP TO 3 BOTS</option><option value="7" selected>FILL TO 8</option></select></label></div>
+        <div class="voice-row"><button id="lobby-mic" class="btn-secondary">ENABLE MICROPHONE</button><label><input type="checkbox" id="voice-ptt"/> PUSH TO TALK <b>V</b></label></div><div class="lobby-actions"><button id="lobby-ready" class="btn-secondary">READY UP</button><button id="lobby-start" class="btn-primary">START MATCH</button></div><p class="lobby-note">The first operator hosts the match. Keep that tab open. Voice is optional and is never recorded.</p>
+      </div><div id="lobby-status" role="status" aria-live="polite"></div>
     </div>
   </div>
-
+  <div id="online-bar" class="hidden"><span class="live-dot"></span><span id="online-status">PRIVATE LOBBY</span><button id="online-mic">MIC OFF</button><button id="lobby-return">LOBBY</button></div>
   <!-- HUD -->
-  <div id="hud" class="hidden">
+  <div id="hud" class="hidden"><div id="sector-label">REFINERY</div><div id="stance-indicator"><span id="stance-label">STANDING</span><div><i id="stamina-fill"></i></div></div>
     <div id="crosshair"><i class="ch t"></i><i class="ch b"></i><i class="ch l"></i><i class="ch r"></i><i class="dot"></i></div>
     <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
     <div id="target-name"></div>

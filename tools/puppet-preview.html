@@ -1,0 +1,10 @@
+<!doctype html><html><head><title>Operator inspection</title><style>body{margin:0;background:#161b1e;color:#eee;font:14px system-ui}header{position:absolute;top:24px;left:24px;letter-spacing:3px}canvas{display:block}</style></head><body><header>OPERATOR RIG INSPECTION · STANDING / CROUCHED / MOVING</header><script type="module">
+import * as THREE from '/node_modules/three/build/three.module.js';
+import {SoldierPuppet} from '/src/game/Puppet.ts';import {WEAPONS} from '/src/game/WeaponDefs.ts';
+const scene=new THREE.Scene();scene.background=new THREE.Color('#263039');const camera=new THREE.PerspectiveCamera(34,innerWidth/innerHeight,.01,100);camera.position.set(5,2.4,8);camera.lookAt(0,1,0);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(1);renderer.shadowMap.enabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.6;document.body.append(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xd8e7ff,0x615440,2));const sun=new THREE.DirectionalLight(0xffedce,4);sun.position.set(4,8,6);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-5;sun.shadow.camera.right=5;scene.add(sun);const rim=new THREE.DirectionalLight(0x99c7ff,3);rim.position.set(-3,3,-3);scene.add(rim);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshStandardMaterial({color:0x313a40,roughness:.8}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+const ps=[];for(let i=0;i<3;i++){const p=await SoldierPuppet.create(scene);await p.setWeapon([WEAPONS.scarh,WEAPONS.ak47,WEAPONS.mp5][i]);p.equip(i);ps.push(p);}
+let t=0;function tick(){requestAnimationFrame(tick);t+=1/60;ps.forEach((p,i)=>p.update(1/60,{pos:new THREE.Vector3((i-1)*2,0,0),feetY:0,yaw:i===2?1.2:Math.PI*.17,aimYaw:i===2?1.2:Math.PI*.17,aimPitch:0,speed:i===2?2.5:0,crouch:i===1,alive:true,deathT:0}));renderer.render(scene,camera);}tick();window.review={ps,scene,camera,renderer,THREE};
+</script></body></html>

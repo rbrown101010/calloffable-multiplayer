@@ -1,3 +1,5 @@
+import { SableMap } from './SableMap';
+import { Online } from './Online';
 import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { Physics, G } from './Physics';
@@ -15,7 +17,6 @@ import { setMaxAnisotropy } from './Materials';
 import { setupPost, PostFX } from './Post';
 import { SoldierPuppet } from './Puppet';
 import { Voice } from './Voice';
-import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
 import { clamp, el, lerp, smoothstep, DEG, fmtTime, pick } from './util';
 
 const SOUND_NAMES = ['shot_bolt3_near', 'shot_bolt3_far', 'shot_bolt4_near', 'shot_ar_near', 'shot_ar_far', 'shot_ak_near', 'shot_ak_far', 'shot_smg_near', 'shot_smg_far', 'shot_smg2_near', 'shot_bolt_near', 'shot_bolt_far', 'shot_bolt2_near', 'shot_pistol_near', 'shot_pistol_far', 'shot_pistol2_near', 'shot_shotgun_near', 'shot_shotgun_far', 'shot_dmr_near', 'reload_pistol', 'reload_rifle', 'shotgun_pump', 'step_sandl1', 'step_sandl2', 'step_sandl3', 'step_sandr1', 'step_sandr2', 'step_sandr3', 'step_stonel1', 'step_stonel2', 'step_stonel3', 'step_stoner1', 'step_stoner2', 'step_stoner3'];
@@ -33,17 +34,18 @@ interface Stats { name: string; kills: number; deaths: number; score: number; st
 export class Game {
   renderer!: THREE.WebGLRenderer; scene = new THREE.Scene(); camera!: THREE.PerspectiveCamera; weaponCam!: THREE.PerspectiveCamera;
   physics!: Physics; input!: Input; audio!: AudioManager; map!: RustMap; player!: Player; vm!: ViewModel; gunplay!: Gunplay; bullets!: Bullets; effects!: Effects; bots!: BotManager; hud!: HUD; grenades!: Grenades; post!: PostFX; sun!: THREE.DirectionalLight;
+  online!: Online; mapName = 'SABLE REACH';
   state: State = 'loading'; loadoutIdx = 0; time = 0; clock = new THREE.Clock();
   match = { timeLeft: MATCH_TIME, over: false };
   respawnT = 0; playerLastShot = -9; botLastShot = new Map<Bot, number>(); bestStreak = 0; stepSide = 0;
   settings = { sens: 1, fov: 90, vol: 0.8, scale: Math.min(devicePixelRatio, 1.5), adsToggle: false, wind: 1, control: 'mouse' as 'mouse' | 'trackpad', difficulty: 'regular' as 'recruit' | 'regular' | 'veteran', scoreLimit: 10 };
   snaps: Snap[] = []; shotLog: { t: number; owner: any }[] = []; lastKill: { t: number; killer: any; victim: any; weapon: string; headshot: boolean } | null = null; kc: KillcamState | null = null;
   voice!: Voice; killTimes: number[] = []; wasLeader = false; uavAnnounced = false;
-  playerPuppet: SoldierPuppet | null = null; flare: Lensflare | null = null; sunDir = new THREE.Vector3(0.5, 0.7, 0.3); snapIdx = 0;
+  playerPuppet: SoldierPuppet | null = null; sunDir = new THREE.Vector3(0.5, 0.7, 0.3); snapIdx = 0;
   countdown = 0; countdownShown = 9; uavReady = false; airReady = false; uavUntil = -1; airTargeting = false; warn60 = false; warn30 = false; matchPointShown = false;
   params = new URLSearchParams(location.search);
   nolock = this.params.has('nolock'); god = this.params.has('god');
-  menuAngle = 0;
+  menuAngle = 1.05;
   private _v = new THREE.Vector3(); private _v2 = new THREE.Vector3();
 
   // ------------------------------------------------------------------ boot
@@ -59,8 +61,11 @@ export class Game {
     this.physics = await Physics.create();
     setLoad(0.1, 'LOADING SKY');
     await this.setupSky();
-    setLoad(0.2, 'BUILDING RUST');
-    this.map = new RustMap(this.physics); this.scene.add(this.map.build());
+    this.mapName = this.params.get('map') === 'rust' ? 'RUST' : 'SABLE REACH';
+    setLoad(0.16, 'LOADING SCANNED SCENERY');
+    if(this.mapName!=='RUST')await SableMap.preload();
+    setLoad(0.2, 'BUILDING ' + this.mapName);
+    this.map = this.mapName === 'RUST' ? new RustMap(this.physics) : new SableMap(this.physics); this.scene.add(this.map.build());
     this.effects = new Effects(this.scene, this.physics, this.audio);
     this.player = new Player(this.physics, this.input, this.camera, this.map.ladders); this.scene.add(this.player.rig);
     this.player.sens = this.settings.sens; this.player.fovBase = this.settings.fov; this.player.fovCur = this.settings.fov;
@@ -68,14 +73,14 @@ export class Game {
     this.bullets = new Bullets(this.scene, this.physics, this.effects, this.audio); this.bullets.onEntityHit = (h) => this.onEntityHit(h);
     this.gunplay = new Gunplay(this.player, this.input, this.vm, this.bullets, this.effects, this.audio, (e) => this.onGunEvent(e));
     this.grenades = new Grenades(this.scene, this.physics, this.effects, this.audio);
-    this.grenades.onExplode = (pos, owner) => { const d = pos.distanceTo(this.player.eyePos); this.audio.explosion(pos, d); this.player.addShake(clamp(1.6 - d / 10, 0, 1.3)); if (d < 12) this.hud.flash(clamp(1 - d / 12, 0, 0.8)); this.bots.alert(pos, 60, owner, this.time); };
+    this.grenades.onExplode = (pos, owner) => { const d = pos.distanceTo(this.player.eyePos); this.audio.explosion(pos, d); this.player.addShake(clamp(1.6 - d / 10, 0, 1.3)); if (d < 12) this.hud.flash(clamp(1 - d / 12, 0, 0.8)); this.bots.alert(pos, 60, owner, this.time); this.online?.explosion(pos); };
     setLoad(0.35, 'LOADING WEAPONS');
     let done = 0; const defs = Object.values(WEAPONS);
     await Promise.all(defs.map((d) => loadWeaponModel(d).then(() => { done++; setLoad(0.35 + 0.2 * done / defs.length, `LOADING WEAPONS ${done}/${defs.length}`); })));
     setLoad(0.55, 'DEPLOYING OPERATORS');
     this.bots = new BotManager(this.physics, this.scene, this.map, this.bullets, this.effects, this.audio, this.player, {
       onKill: (k, v, w, hs) => this.onKill(k, v, w, hs),
-      onShot: (b, pos) => { this.botLastShot.set(b, this.time); this.bots.alert(pos, 40, b, this.time); this.shotLog.push({ t: this.time, owner: b }); },
+      onShot: (b, pos) => { this.online?.botShot(b,pos); this.botLastShot.set(b, this.time); this.bots.alert(pos, 40, b, this.time); this.shotLog.push({ t: this.time, owner: b }); },
       onStep: (b, running) => {
         const hit = this.physics.raycast(new THREE.Vector3(b.pos.x, b.feetY + 0.3, b.pos.z), new THREE.Vector3(0, -1, 0), 1.5, G.WORLD); const surf = hit?.owner?.surface ?? 'sand';
         const stone = surf === 'metal' || surf === 'concrete' || surf === 'wood' || surf === 'rock';
@@ -107,6 +112,10 @@ export class Game {
     this.post = setupPost(this.renderer, this.scene, this.camera, this.weaponCam, { ao: !this.params.has('noao') });
     this.renderMinimapBase();
     this.setupUI();
+    this.online = new Online(this);
+    document.querySelectorAll('[data-map-name]').forEach(e => e.textContent=this.mapName);
+    el<HTMLSelectElement>('map-select').value=this.params.get('map')==='rust'?'rust':'sable';
+    el('map-select').addEventListener('change',()=>{const url=new URL(location.href);url.searchParams.set('map',el<HTMLSelectElement>('map-select').value);location.href=url.toString();});
     setLoad(1, 'READY');
     await new Promise((r) => setTimeout(r, 250));
     el('loading').classList.add('hidden');
@@ -129,48 +138,40 @@ export class Game {
   }
 
   private async setupSky() {
-    const tex = await new Promise<THREE.DataTexture>((res, rej) => new RGBELoader().setDataType(THREE.FloatType).load('/hdri/goegap_2k.hdr', res, undefined, rej));
+    const tex = await new Promise<THREE.DataTexture>((res, rej) => new RGBELoader().setDataType(THREE.FloatType).load(this.params.get('map')==='rust'?'/hdri/goegap_2k.hdr':'/hdri/rogland_sunset_2k.hdr', res, undefined, rej));
     tex.mapping = THREE.EquirectangularReflectionMapping;
     const sunDir = findSunDirection(tex);
     const pmrem = new THREE.PMREMGenerator(this.renderer); pmrem.compileEquirectangularShader();
     const env = pmrem.fromEquirectangular(tex).texture;
-    this.scene.environment = env; this.scene.environmentIntensity = 0.95;
-    this.scene.background = tex; this.scene.backgroundIntensity = 1.0;
-    this.scene.fog = new THREE.FogExp2(0xd8ccb2, 0.0042);
+    this.scene.environment = env; this.scene.environmentIntensity = 0.65;
+    this.scene.background = tex; this.scene.backgroundIntensity = 0.85;
+    this.scene.fog = new THREE.FogExp2(0xcab49b, 0.003);
     // sun
-    this.sun = new THREE.DirectionalLight(0xfff0d8, 3.4);
+    this.sun = new THREE.DirectionalLight(0xffe0b4, 2.7);
     this.sun.position.copy(sunDir).multiplyScalar(110); this.sun.target.position.set(0, 0, 0); this.scene.add(this.sun.target);
     this.sun.castShadow = true; const sc = this.sun.shadow; sc.mapSize.set(4096, 4096); sc.camera.near = 20; sc.camera.far = 220; sc.camera.left = -64; sc.camera.right = 64; sc.camera.top = 64; sc.camera.bottom = -64; sc.bias = -0.00035; sc.normalBias = 0.035; sc.radius = 1.6;
     this.sun.layers.enable(VIEW_LAYER); this.scene.add(this.sun);
-    const hemi = new THREE.HemisphereLight(0xbfd4ee, 0x9a7a55, 0.6); hemi.layers.enable(VIEW_LAYER); this.scene.add(hemi);
-    // lens flare on the sun
+    const hemi = new THREE.HemisphereLight(0xb1c4d5, 0x80634b, 0.8); hemi.layers.enable(VIEW_LAYER); this.scene.add(hemi);
+    // The HDR sun and bloom stay compatible with the half-float post-processing buffer.
     this.sunDir.copy(sunDir);
-    const disc = flareTexture(256, false), hex = flareTexture(128, true);
-    const flare = new Lensflare();
-    flare.addElement(new LensflareElement(disc, 240, 0, new THREE.Color(0.75, 0.68, 0.55)));
-    flare.addElement(new LensflareElement(hex, 50, 0.55, new THREE.Color(1, 0.82, 0.62)));
-    flare.addElement(new LensflareElement(hex, 80, 0.7, new THREE.Color(0.88, 0.9, 1)));
-    flare.addElement(new LensflareElement(hex, 130, 0.9, new THREE.Color(1, 0.86, 0.7)));
-    flare.addElement(new LensflareElement(hex, 60, 1.05, new THREE.Color(1, 1, 1)));
-    flare.layers.set(0); this.scene.add(flare); this.flare = flare;
   }
 
   // ------------------------------------------------------------------ UI
   private setupUI() {
     const list = el('loadouts'); list.innerHTML = '';
     LOADOUTS.forEach((lo, i) => {
-      const d = document.createElement('div'); d.className = 'lo' + (i === this.loadoutIdx ? ' sel' : '');
-      d.innerHTML = `<div class="lo-num">0${i + 1}</div><div><div class="lo-name">${lo.name}</div><div class="lo-desc">${lo.desc}</div></div><div class="lo-tag">${lo.tag}</div>`;
+      const d = document.createElement('button'); d.type='button'; d.setAttribute('aria-label',lo.name+' loadout'); d.className = 'lo' + (i === this.loadoutIdx ? ' sel' : '');
+      d.innerHTML = `<div class="lo-num">${String(i+1).padStart(2,'0')}</div><div><div class="lo-name">${lo.name}</div><div class="lo-desc">${lo.desc}</div></div><div class="lo-tag">${lo.tag}</div>`;
       d.addEventListener('click', () => { this.selectLoadout(i); this.audio.uiClick(); });
       d.addEventListener('mouseenter', () => this.audio.uiHover());
       list.appendChild(d);
     });
     this.renderLoadoutDetail();
-    el('btn-deploy').addEventListener('click', () => this.startMatch());
+    el('btn-deploy').addEventListener('click', () => {if(this.online?.connected)this.online.leave();void this.startMatch();});
     el('btn-resume').addEventListener('click', () => this.resume());
     el('btn-loadout').addEventListener('click', () => { this.endMatch(true); });
     el('btn-quit').addEventListener('click', () => this.endMatch(false, true));
-    el('btn-again').addEventListener('click', () => this.showMenu());
+    el('btn-again').addEventListener('click', () => {if(this.online?.connected){el('lobby').classList.remove('hidden');}else this.showMenu();});
     const bind = (id: string, key: 'sens' | 'fov' | 'vol' | 'scale' | 'wind', fmt: (v: number) => string, apply: (v: number) => void) => {
       const inp = el<HTMLInputElement>(id), out = el(id + '-v'); inp.value = String(this.settings[key]); out.textContent = fmt(this.settings[key]);
       inp.addEventListener('input', () => { const v = parseFloat(inp.value); (this.settings as any)[key] = v; out.textContent = fmt(v); apply(v); this.saveSettings(); });
@@ -202,14 +203,15 @@ export class Game {
     document.querySelectorAll<HTMLElement>('[data-diff]').forEach((b) => b.addEventListener('click', () => { this.settings.difficulty = b.dataset.diff as any; applyDiff(); this.saveSettings(); this.audio.uiClick(); }));
     applyDiff();
     window.addEventListener('keydown', (e) => {
-      if (this.state === 'menu') { if (e.code === 'Enter') this.startMatch(); if (/^Digit[1-4]$/.test(e.code)) this.selectLoadout(parseInt(e.code[5]) - 1); }
+      if ((e.target as HTMLElement)?.matches('input,textarea,select') || !el('lobby').classList.contains('hidden'))return;
+      if (this.state === 'menu') { if (e.code === 'Enter') this.startMatch(); if (/^Digit[0-9]$/.test(e.code)) this.selectLoadout((parseInt(e.code[5]) + 9) % 10); }
       else if (this.state === 'paused' && e.code === 'Enter') this.resume();
       else if (this.state === 'ended' && e.code === 'Enter') this.showMenu();
     });
     this.input.onLockChange = (locked) => { if (!locked && this.state === 'playing' && !this.nolock) this.pause(); };
     window.addEventListener('mousedown', () => { this.audio.unlock(); });
   }
-  private selectLoadout(i: number) { this.loadoutIdx = i; document.querySelectorAll('#loadouts .lo').forEach((e, k) => e.classList.toggle('sel', k === i)); this.renderLoadoutDetail(); }
+  private selectLoadout(i: number) { this.loadoutIdx = i; document.querySelectorAll('#loadouts .lo').forEach((e, k) => e.classList.toggle('sel', k === i)); this.renderLoadoutDetail(); this.online?.publishPresence(); }
   private renderLoadoutDetail() {
     const lo = LOADOUTS[this.loadoutIdx]; const p = WEAPONS[lo.primary], s = WEAPONS[lo.secondary];
     const bar = (label: string, v: number) => `<div class="stat"><span>${label}</span><i><b style="width:${Math.round(clamp(v, 0.05, 1) * 100)}%"></b></i><span>${Math.round(clamp(v, 0, 1) * 100)}</span></div>`;
@@ -222,7 +224,7 @@ export class Game {
   private loadSettings() { try { const s = JSON.parse(localStorage.getItem('rust_settings') || '{}'); Object.assign(this.settings, s); } catch {} }
   private saveSettings() { try { localStorage.setItem('rust_settings', JSON.stringify(this.settings)); } catch {} }
 
-  private showMenu() {
+  showMenu() {
     this.state = 'menu'; el('menu').classList.remove('hidden'); el('pause').classList.add('hidden'); el('end').classList.add('hidden'); this.hud.hide();
     this.vm.root.visible = false; this.input.unlock(); this.kc = null; this.hud.hideKillcam(); this.playerPuppet?.setShadowOnly(true);
     for (const b of this.bots.bots) { if (b.alive) b.die(); if (b.model) b.model.visible = false; b.respawnT = 1e9; }
@@ -237,7 +239,9 @@ export class Game {
     const P = this.player; P.kills = 0; P.deaths = 0; P.score = 0; P.streak = 0;
     for (const b of this.bots.bots) { b.kills = 0; b.deaths = 0; b.score = 0; b.streak = 0; b.respawnT = 0; }
     await this.gunplay.setLoadout(LOADOUTS[this.loadoutIdx]);
-    this.bots.spawnAll();
+    if(!this.online?.connected || this.online.isHost)this.bots.spawnAll();
+    else for(const b of this.bots.bots){b.alive=false;for(const c of [b.collider,b.hitHead,b.hitBody,b.hitLegs])c.setEnabled(false);b.puppet?.setVisible(false);}
+    (this.player as any).nades=LOADOUTS[this.loadoutIdx].lethal;
     for (const b of this.bots.bots) if (b.model) b.model.visible = true;
     this.respawnPlayer(true);
     this.hud.show(); this.hud.setLethal(this.gunplay.lethals); this.hud.setTimer(this.match.timeLeft); this.hud.setScores(0, 0);
@@ -249,7 +253,7 @@ export class Game {
     this.hud.centerMsg('FREE-FOR-ALL', undefined, '');
   }
   private pause() { if (this.state !== 'playing') return; this.state = 'paused'; el('pause').classList.remove('hidden'); this.hud.showScoreboard(false); }
-  private resume() { if (this.state !== 'paused') return; el('pause').classList.add('hidden'); this.state = 'playing'; if (!this.nolock) this.input.lock(); }
+  resume() { if (this.state !== 'paused') return; el('pause').classList.add('hidden'); this.state = 'playing'; if (!this.nolock) this.input.lock(); }
   private endMatch(toMenu = false, skipKillcam = false) {
     if (toMenu) { this.showMenu(); return; }
     if (this.state === 'killcam' || this.state === 'ended') return;
@@ -257,10 +261,11 @@ export class Game {
     if (!skipKillcam && this.lastKill && this.time - this.lastKill.t < 120 && this.snaps.length > 20 && !this.params.has('nokillcam')) { this.startKillcam(); return; }
     this.showEndScreen();
   }
-  private showEndScreen() {
+  showEndScreen() {
     this.state = 'ended'; this.input.unlock(); el('pause').classList.add('hidden'); this.hud.showScoreboard(false); this.hud.hideKillcam(); this.vm.root.visible = false;
     const rows = this.scoreRows(); const place = rows.findIndex((r) => r.me) + 1;
-    el('end-eyebrow').textContent = 'MATCH OVER · FREE-FOR-ALL · RUST';
+    el('end-eyebrow').textContent = 'MATCH OVER · FREE-FOR-ALL · '+this.mapName;
+    el('btn-again').textContent=this.online?.connected?'RETURN TO LOBBY':'PLAY AGAIN';
     el('end-title').textContent = place === 1 ? 'VICTORY' : 'DEFEAT'; el('end-title').style.color = place === 1 ? '' : '#e63b2e';
     this.voice.announce(place === 1 ? 'victory' : 'defeat', 4, 0);
     const P = this.player; el('end-stats').innerHTML = `<div><b>${place}${['ST', 'ND', 'RD', 'TH'][Math.min(place - 1, 3)]}</b><span>PLACE</span></div><div><b>${P.kills}</b><span>KILLS</span></div><div><b>${P.deaths}</b><span>DEATHS</span></div><div><b>${(P.kills / Math.max(1, P.deaths)).toFixed(2)}</b><span>K/D</span></div><div><b>${this.bestStreak}</b><span>BEST STREAK</span></div>`;
@@ -269,10 +274,10 @@ export class Game {
   }
   private scoreRows(): ScoreRow[] {
     const rows: ScoreRow[] = [{ name: this.player.name, score: this.player.score, kills: this.player.kills, deaths: this.player.deaths, streak: this.player.streak, me: true }];
-    for (const b of this.bots.bots) rows.push({ name: b.name, score: b.score, kills: b.kills, deaths: b.deaths, streak: b.streak, me: false });
+    for(const b of this.online?.connected?[...this.bots.bots.slice(0,Math.max(0,Math.min(this.online.world.bots,8-this.online.peers.size))),...this.online.remotes.values()]:this.bots.bots) rows.push({ name: b.name, score: b.score, kills: b.kills, deaths: b.deaths, streak: b.streak, me: false });
     return rows.sort((a, b) => b.score - a.score || a.deaths - b.deaths);
   }
-  private respawnPlayer(first = false) {
+  respawnPlayer(first = false) {
     const s = this.bots.pickSpawn(this.player);
     this.player.spawn(s.pos, s.yaw);
     this.gunplay.refill(); this.gunplay.lethals = LOADOUTS[this.loadoutIdx].lethal; this.hud.setLethal(this.gunplay.lethals);
@@ -286,14 +291,15 @@ export class Game {
 
   // ------------------------------------------------------------------ events
   private onGunEvent(e: GunEvent) {
-    if (e.type === 'shot') { this.playerLastShot = this.time; this.bots.alert(e.pos, 48, this.player, this.time); this.shotLog.push({ t: this.time, owner: this.player }); }
+    if (e.type === 'shot') { this.online?.connected && this.online.localShot(); this.playerLastShot = this.time; this.bots.alert(e.pos, 48, this.player, this.time); this.shotLog.push({ t: this.time, owner: this.player }); }
     else if (e.type === 'ammo') { const s = this.gunplay.slot; if (s) this.hud.setAmmo(s.mag, s.reserve, s.def.mag, this.gunplay.reloading); }
     else if (e.type === 'switch') { const other = this.gunplay.slots[1 - this.gunplay.cur]; this.hud.setWeapon(e.def.name, modeLabel(e.def), other ? other.def.name : ''); this.playerPuppet?.setWeapon(e.def); }
-    else if (e.type === 'grenade') { this.grenades.throw(e.pos, e.vel, e.fuse, this.player); this.hud.setLethal(this.gunplay.lethals); this.audio.weaponSwitch(); this.voice.operator('frag', 2); }
+    else if (e.type === 'grenade') { if(this.online?.connected)this.online.grenade(e.pos,e.vel,e.fuse);else this.grenades.throw(e.pos, e.vel, e.fuse, this.player); this.hud.setLethal(this.gunplay.lethals); this.audio.weaponSwitch(); this.voice.operator('frag', 2); }
     else if (e.type === 'reload') { if (this.player.alive) this.voice.operator('reload', 6); }
   }
 
   private onEntityHit(h: EntityHit) {
+    if(this.online?.connected){this.online.hit(h);return;}
     const { bullet, point, normal, owner } = h; const def = bullet.def; const ent = owner.entity; if (!ent || !ent.alive) return;
     let part: string = owner.part ?? 'body';
     if (ent === this.player) part = point.y > this.player.eyePos.y - 0.2 ? 'head' : point.y < this.player.feetY + 0.8 ? 'legs' : 'body';
@@ -305,7 +311,7 @@ export class Game {
     void normal;
   }
 
-  private onPlayerDamaged(amount: number, from: THREE.Vector3 | null) {
+  onPlayerDamaged(amount: number, from: THREE.Vector3 | null) {
     let angle: number | null = null;
     if (from) { const d = this._v.subVectors(from, this.player.pos); const f = this.player.flatForward, r = this.player.flatRight; angle = Math.atan2(d.dot(r), d.dot(f)); }
     this.hud.damage(clamp(amount / 60, 0.25, 1), angle); this.player.addShake(clamp(amount / 100, 0.1, 0.5));
@@ -313,6 +319,7 @@ export class Game {
   }
 
   private onKill(killer: any, victim: any, weapon: string, headshot: boolean) {
+    if(this.online?.connected){this.online.onKill(killer,victim,weapon,headshot);return;}
     const me = this.player;
     if (this.state === 'playing') this.lastKill = { t: this.time, killer, victim, weapon, headshot };
     if (killer && killer !== victim) {
@@ -428,6 +435,7 @@ export class Game {
   }
 
   private launchAirstrike(target: THREE.Vector3, dir: THREE.Vector3) {
+    if(this.online?.connected){this.online.airstrike(target,dir);return;}
     this.hud.centerMsg('AIRSTRIKE INBOUND'); this.audio.jetFlyby(); this.audio.bombWhistle(1.3); this.voice.announce('airstrike_inbound', 3, 0);
     for (let i = 0; i < 5; i++) {
       setTimeout(() => {
@@ -454,7 +462,9 @@ export class Game {
   // ------------------------------------------------------------------ frame
   private frame() {
     const dt = Math.min(0.05, this.clock.getDelta()); this.time += dt;
-    if (this.state === 'playing') this.updatePlaying(dt);
+    if(this.map instanceof SableMap)this.map.update(dt);
+    this.online?.update(dt);
+    if (this.state === 'playing' || (this.state==='paused'&&this.online?.active)) this.updatePlaying(dt);
     else if (this.state === 'killcam') this.updateKillcam(dt);
     else if (this.state === 'menu' || this.state === 'ended') this.updateMenuCam(dt);
     this.render(dt);
@@ -462,35 +472,35 @@ export class Game {
   }
 
   private updateMenuCam(dt: number) {
-    this.menuAngle += dt * 0.08;
-    const r = 26, cx = 0, cz = -2; const rig = this.player.rig;
-    rig.position.set(cx + Math.cos(this.menuAngle) * r, 9 + Math.sin(this.menuAngle * 0.7) * 2, cz + Math.sin(this.menuAngle) * r);
-    rig.lookAt(cx, 7, cz);
+    this.menuAngle += dt * 0.022;
+    const r = this.mapName==='RUST'?26:65, cx = 0, cz = -2; const rig = this.player.rig;
+    rig.position.set(cx + Math.cos(this.menuAngle) * r, (this.mapName==='RUST'?9:22) + Math.sin(this.menuAngle * 0.7) * 2, cz + Math.sin(this.menuAngle) * r);
+    rig.lookAt(cx, 7, cz);rig.rotateY(Math.PI);
     if (this.camera.fov !== 62) { this.camera.fov = 62; this.camera.updateProjectionMatrix(); }
     this.effects.update(dt, rig.position, this.time); this.audio.updateListener(this.camera);
   }
 
   private updatePlaying(dt: number) {
     const P = this.player, gp = this.gunplay; const def = gp.def;
-    if (!P.alive) { this.respawnT -= dt; this.hud.setRespawnCount(Math.max(0, this.respawnT)); if (this.respawnT <= 0 && !this.match.over) this.respawnPlayer(); }
+    if (!P.alive) { this.respawnT -= dt; this.hud.setRespawnCount(Math.max(0, this.respawnT)); if (this.respawnT <= 0 && !this.match.over && !this.online?.connected) this.respawnPlayer(); }
     // match-start countdown
     if (this.countdown > 0) {
       this.countdown -= dt; const n = Math.ceil(this.countdown);
       if (n < this.countdownShown) { this.countdownShown = n; if (n >= 1) { this.hud.streak(String(n)); this.audio.countdownBeep(false); } }
       if (this.countdown <= 0) { this.hud.streak('GO'); this.audio.countdownBeep(true); this.bots.frozen = false; this.voice.announce('ffa', 3, 0); }
     }
-    const canControl = P.alive && !this.match.over && this.countdown <= 0;
+    const canControl = P.alive && !this.match.over && this.countdown <= 0 && this.state==='playing' && el('lobby').classList.contains('hidden');
     this.updateStreaks(dt, canControl);
-    P.update(dt, { canControl, canLook: P.alive && !this.match.over, speedMul: def?.speedMul ?? 1, adsHeld: gp.adsHeld, adsFov: def?.adsFov ?? 60, adsTime: def?.adsTime ?? 0.25, firing: gp.firing });
+    P.update(dt, { canControl, canLook: P.alive && !this.match.over && this.state==='playing', speedMul: def?.speedMul ?? 1, adsHeld: gp.adsHeld, adsFov: def?.adsFov ?? 60, adsTime: def?.adsTime ?? 0.25, firing: gp.firing });
     gp.update(dt, canControl);
     this.bullets.listener.copy(P.eyePos); this.bullets.listenerOwner = P; this.bullets.update(dt);
-    this.bots.update(dt, this.time);
-    this.grenades.update(dt, () => this.bots.victims);
+    if(!this.online?.connected||this.online.isHost)this.bots.update(dt, this.time);
+    if(!this.online?.connected||this.online.isHost)this.grenades.update(dt, () => this.online?.connected?this.online.victims:this.bots.victims);
     this.physics.step(dt);
     this.effects.update(dt, P.eyePos, this.time);
     this.audio.updateListener(this.camera); this.audio.update(dt);
     // player body (shadow) + killcam recorder
-    if (this.playerPuppet) this.playerPuppet.update(dt, { pos: P.pos, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, speed: P.speed, alive: P.alive, deathT: P.deathT });
+    if (this.playerPuppet) this.playerPuppet.update(dt, { pos: P.pos, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, speed: P.speed, alive: P.alive, deathT: P.deathT, crouch: P.crouching });
     if (this.countdown <= 0) {
       this.snaps.push({ t: this.time, p: { x: P.pos.x, y: P.pos.y, z: P.pos.z, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, alive: P.alive, speed: P.speed, eyeY: P.rig.position.y, pitch: P.pitch, ads: P.ads }, b: this.bots.bots.map((b) => ({ x: b.pos.x, y: b.pos.y, z: b.pos.z, feetY: b.feetY, yaw: b.yaw, aimYaw: b.aimYaw, aimPitch: b.aimPitch, alive: b.alive, speed: Math.hypot(b.vel.x, b.vel.z) })) });
       while (this.snaps.length && this.snaps[0].t < this.time - 9) this.snaps.shift();
@@ -505,7 +515,7 @@ export class Game {
     const look = P.alive ? this.physics.raycast(P.eyePos, P.forward, 70, G.WORLD | G.HITBOX) : null;
     this.hud.setTargetName(look && look.owner?.entity && look.owner.entity !== P && look.owner.entity.alive ? look.owner.entity.name : null);
     // match clock + warnings
-    if (!this.match.over && this.countdown <= 0) {
+    if (!this.match.over && this.countdown <= 0 && !this.online?.connected) {
       this.match.timeLeft -= dt;
       if (!this.warn60 && this.match.timeLeft <= 60) { this.warn60 = true; this.hud.centerMsg('1 MINUTE REMAINING'); this.voice.announce('one_minute', 2, 0); }
       if (!this.warn30 && this.match.timeLeft <= 30) { this.warn30 = true; this.hud.centerMsg('30 SECONDS'); this.voice.announce('thirty', 2, 0); }
@@ -520,8 +530,11 @@ export class Game {
     const rows = this.scoreRows(); this.hud.setScores(P.kills, rows.find((r) => !r.me)?.kills ?? 0);
     this.hud.showScoreboard(this.input.down('Tab') && P.alive, rows);
     const s = gp.slot; if (s) { this.hud.setAmmo(s.mag, s.reserve, s.def.mag, gp.reloading); this.hud.setAmmoWarn(gp.reloading ? null : s.mag === 0 && s.reserve === 0 ? 'NO AMMO' : s.mag === 0 ? 'RELOAD' : s.mag <= Math.max(1, Math.floor(s.def.mag * 0.25)) ? 'LOW AMMO' : null); }
-    this.hud.drawMinimap(P.pos, P.yaw, this.bots.bots.map((b) => ({ pos: b.pos, alive: b.alive, visible: this.time - (this.botLastShot.get(b) ?? -9) < 2.2 || b.pos.distanceTo(P.pos) < 5 })), this.time, this.time < this.uavUntil);
+    this.hud.drawMinimap(P.pos, P.yaw, (this.online?.connected?[...this.bots.bots,...this.online.remotes.values()]:this.bots.bots).map((b) => ({ pos: b.pos, alive: b.alive, visible: this.time - (this.botLastShot.get(b) ?? -9) < 2.2 || b.pos.distanceTo(P.pos) < 5 })), this.time, this.time < this.uavUntil);
     this.hud.setStreaks(P.streak, this.time < this.uavUntil ? 'active' : this.uavReady ? 'ready' : 'locked', this.airTargeting ? 'active' : this.airReady ? 'ready' : 'locked');
+    el('sector-label').textContent=this.map instanceof SableMap?this.map.sector(P.pos.x,P.pos.z):'RUST';
+    el('stance-label').textContent=P.sliding?'SLIDING':P.crouching?'CROUCHED':P.sprinting?'SPRINTING':'STANDING';
+    el('stamina-fill').style.width=Math.round(P.stamina*100)+'%';
     this.audio.setLowHealth(P.alive && P.health < 38 ? 1 - P.health / 38 : 0);
     this.hud.update(dt, P.alive ? P.health : 100);
     // ladder hint
@@ -536,8 +549,7 @@ export class Game {
     if (this.weaponCam.aspect !== cam.aspect) { this.weaponCam.aspect = cam.aspect; this.weaponCam.updateProjectionMatrix(); }
     // shadow follows the player
     const sp = this.state === 'playing' ? this.player.pos : this.player.rig.position;
-    this.sun.target.position.set(sp.x, 0, sp.z); this.sun.position.copy(this.sun.target.position).addScaledVector(this._v2.copy(this.sun.position).sub(this.sun.target.position).normalize(), 110); this.sun.target.updateMatrixWorld();
-    if (this.flare) this.flare.position.setFromMatrixPosition(cam.matrixWorld).addScaledVector(this.sunDir, 500);
+    this.sun.target.position.set(sp.x, 0, sp.z); this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 110); this.sun.target.updateMatrixWorld();
     this.renderer.shadowMap.needsUpdate = true;
     this.post.composer.render(dt);
   }
@@ -547,7 +559,7 @@ export class Game {
   }
 
   private renderMinimapBase() {
-    const size = 100, res = 1024;
+    const size = this.map.bounds*2+4, res = 1024;
     const rt = new THREE.WebGLRenderTarget(res, res, { type: THREE.UnsignedByteType, colorSpace: THREE.SRGBColorSpace });
     const cam = new THREE.OrthographicCamera(-size / 2, size / 2, size / 2, -size / 2, 1, 300); cam.position.set(0, 120, 0); cam.up.set(0, 0, -1); cam.lookAt(0, 0, 0); cam.updateMatrixWorld(true); cam.layers.set(0);
     const bg = this.scene.background, fog = this.scene.fog; this.scene.background = new THREE.Color(0x0e0c0a); this.scene.fog = null;
@@ -557,20 +569,11 @@ export class Game {
     for (let y = 0; y < res; y++) { const src = (res - 1 - y) * res * 4, dst = y * res * 4; img.data.set(buf.subarray(src, src + res * 4), dst); }
     ctx.putImageData(img, 0, 0);
     const out = document.createElement('canvas'); out.width = out.height = res; const octx = out.getContext('2d')!; octx.filter = 'saturate(0.5) brightness(0.85) contrast(1.25)'; octx.drawImage(c, 0, 0);
-    this.hud.setMinimapBase(out, size); this.scene.background = bg; this.scene.fog = fog; rt.dispose();
+    el<HTMLImageElement>('map-preview').src=out.toDataURL('image/jpeg',.8); this.hud.setMinimapBase(out, size); this.scene.background = bg; this.scene.fog = fog; rt.dispose();
   }
 }
 
 const wrapA = (a: number) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
-/** Soft disc or hexagon texture for the lens flare. */
-function flareTexture(size: number, hex: boolean) {
-  const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d')!; const cx = size / 2;
-  if (hex) { g.beginPath(); for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2 + Math.PI / 6; const x = cx + Math.cos(a) * cx * 0.9, y = cx + Math.sin(a) * cx * 0.9; if (i === 0) g.moveTo(x, y); else g.lineTo(x, y); } g.closePath(); g.clip(); }
-  const grad = g.createRadialGradient(cx, cx, 0, cx, cx, cx); grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(hex ? 0.5 : 0.15, hex ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.8)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad; g.fillRect(0, 0, size, size);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-}
-
 function modeLabel(d: WeaponDef) { return d.mode === 'auto' ? 'AUTO' : d.mode === 'semi' ? 'SEMI' : d.mode === 'bolt' ? 'BOLT' : 'PUMP'; }
 
 /** Find the brightest direction in an equirectangular HDR (the sun). */

@@ -8,3 +8,9 @@ dist/
 .env
 .env.*
 !.env.example
+
+.vercel/
+.playwright-cli/
+output/
+work/
+.vercel

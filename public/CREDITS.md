@@ -40,3 +40,11 @@ This is a fan-made, non-commercial tribute to the Call of Duty: Modern Warfare 2
 
 ## Fonts
 - Rajdhani, Teko, Oswald — Google Fonts (OFL)
+
+## Sable Reach additions
+- Rogland Sunset HDRI — Poly Haven, CC0: https://polyhaven.com/a/rogland_sunset
+- Namaqualand Rocks 01 photoscans — Poly Haven, CC0: https://polyhaven.com/a/namaqualand_rocks_01
+- Old Military Crate — Poly Haven, CC0: https://polyhaven.com/a/old_military_crate
+- Portable Generator — Poly Haven, CC0: https://polyhaven.com/a/portable_generator
+- New environment layout, operator equipment geometry, weapon grip poses, signs, terrain, vegetation, and dust are authored in this repository.
+- Covered Car — Poly Haven, CC0: https://polyhaven.com/a/covered_car

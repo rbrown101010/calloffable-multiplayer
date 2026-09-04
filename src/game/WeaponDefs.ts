@@ -151,9 +151,19 @@ export const WEAPONS: Record<string, WeaponDef> = {
 };
 
 export interface Loadout { id: string; name: string; tag: string; desc: string; primary: string; secondary: string; lethal: number; }
+// Weapon variants retain the original detailed models, with distinct ballistics and handling.
+WEAPONS.scarScout = { ...WEAPONS.scarh, id: 'scarScout', name: 'SCAR-H DMR', mode: 'semi', damage: 62, rpm: 280, mag: 12, reserve: 72, adsSpread: 0.035, falloffStart: 65, falloffEnd: 145, recoilPitch: 1.5 * D, adsFov: 42 };
+WEAPONS.akSupport = { ...WEAPONS.ak47, id: 'akSupport', name: 'AK-47 SUPPORT', mag: 60, reserve: 180, speedMul: 0.86, adsTime: 0.34, reloadTime: 3.4, reloadEmptyTime: 4.1, recoilPitch: 0.95 * D };
+WEAPONS.mp5Recon = { ...WEAPONS.mp5, id: 'mp5Recon', name: 'MP5 RECON', rpm: 720, damage: 28, hipSpread: 2.0, recoilPitch: 0.44 * D, speedMul: 1.08, adsTime: 0.13, flashScale: 0.35 };
 export const LOADOUTS: Loadout[] = [
   { id: 'assault', name: 'ASSAULT', tag: 'ALL-ROUNDER', desc: 'SCAR-H · DESERT EAGLE · FRAG', primary: 'scarh', secondary: 'deagle', lethal: 1 },
   { id: 'sniper', name: 'SNIPER', tag: 'ONE SHOT', desc: 'INTERVENTION · M1911 · FRAG', primary: 'intervention', secondary: 'm1911', lethal: 1 },
   { id: 'rusher', name: 'RUSHER', tag: 'CLOSE QUARTERS', desc: 'MP5 · DESERT EAGLE · FRAG ×2', primary: 'mp5', secondary: 'deagle', lethal: 2 },
   { id: 'overkill', name: 'OVERKILL', tag: 'TWO PRIMARIES', desc: 'AK-47 · SPAS-12 · FRAG', primary: 'ak47', secondary: 'spas12', lethal: 1 },
+  { id: 'marksman', name: 'MARKSMAN', tag: 'PRECISION', desc: 'SCAR-H DMR · M1911 · FRAG', primary: 'scarScout', secondary: 'm1911', lethal: 1 },
+  { id: 'breacher', name: 'BREACHER', tag: 'ROOM CLEARING', desc: 'SPAS-12 · MP5 · FRAG ×2', primary: 'spas12', secondary: 'mp5', lethal: 2 },
+  { id: 'support', name: 'SUPPORT', tag: '60 ROUND MAG', desc: 'AK-47 SUPPORT · M1911 · FRAG', primary: 'akSupport', secondary: 'm1911', lethal: 1 },
+  { id: 'recon', name: 'RECON', tag: 'HIGH MOBILITY', desc: 'MP5 RECON · M1911 · FRAG', primary: 'mp5Recon', secondary: 'm1911', lethal: 1 },
+  { id: 'hunter', name: 'HUNTER', tag: 'RANGE + POWER', desc: 'INTERVENTION · SPAS-12 · FRAG', primary: 'intervention', secondary: 'spas12', lethal: 1 },
+  { id: 'vanguard', name: 'VANGUARD', tag: 'FLEXIBLE', desc: 'SCAR-H · MP5 RECON · FRAG ×2', primary: 'scarh', secondary: 'mp5Recon', lethal: 2 },
 ];

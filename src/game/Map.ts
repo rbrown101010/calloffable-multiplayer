@@ -12,7 +12,7 @@ export interface SpawnPoint { pos: THREE.Vector3; yaw: number; }
 type BoxOpts = { rot?: [number, number, number]; tile?: number; collide?: boolean; shadow?: boolean; receive?: boolean; surface?: string };
 
 /** Accumulates geometry per material, merges into few meshes, and registers static colliders. */
-class Builder {
+export class Builder {
   private parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
   private noShadow = new Set<THREE.Material>();
   constructor(private physics: Physics, private group: THREE.Group) {}
@@ -106,11 +106,11 @@ export class RustMap {
   /** half-size of the playable square (fence at PLAY-0.6, hard boundary at PLAY) */
   static PLAY = 48;
   bounds = 48;
-  private heights!: Float32Array; private hSeg = 180; private hSize = 240;
+  protected heights!: Float32Array; protected hSeg = 180; protected hSize = 240;
   groundMesh!: THREE.Mesh;
   mats!: Record<string, THREE.Material>;
 
-  constructor(private physics: Physics) {}
+  constructor(protected physics: Physics) {}
 
   groundHeight(x: number, z: number) {
     const r = Math.hypot(x, z) * 0.55 + Math.max(Math.abs(x), Math.abs(z)) * 0.45;
@@ -121,7 +121,7 @@ export class RustMap {
     return h;
   }
 
-  private makeMaterials() {
+  protected makeMaterials() {
     const M: Record<string, THREE.Material> = {
       sand: pbr('gravelly_sand', { tile: 5, normalScale: 0.9 }),
       sandFar: pbr('aerial_sand', { tile: 14, normalScale: 0.5 }),
@@ -187,7 +187,7 @@ export class RustMap {
   }
 
   // ---------------------------------------------------------------- GROUND
-  private buildGround(M: Record<string, THREE.Material>) {
+  protected buildGround(M: Record<string, THREE.Material>) {
     const size = this.hSize, seg = this.hSeg;
     const geo = new THREE.PlaneGeometry(size, size, seg, seg); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -223,7 +223,7 @@ export class RustMap {
   }
 
   // ---------------------------------------------------------------- TOWER
-  private buildTower(B: Builder, M: Record<string, THREE.Material>) {
+  protected buildTower(B: Builder, M: Record<string, THREE.Material>) {
     const cx = 0, cz = -2; // tower center
     const half = 3.0; const L1 = 3.4, L2 = 6.8, TOP = 10.2;
     const col = 0.32;
@@ -303,7 +303,7 @@ export class RustMap {
   }
 
   /** Straight stair: from (x, z) at y0 rising to y1 over `run` meters in direction (0=+z south, 180=-z north, 90=+x, 270=-x). */
-  private stair(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, y0: number, dirDeg: number, y1: number, run: number, width: number, _label: string) {
+  protected stair(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, y0: number, dirDeg: number, y1: number, run: number, width: number, _label: string) {
     const rise = y1 - y0; const steps = Math.max(4, Math.round(rise / 0.22)); const stepRun = run / steps; const stepRise = rise / steps;
     const dir = new THREE.Vector3(Math.sin(dirDeg * DEG), 0, Math.cos(dirDeg * DEG));
     // visible treads
@@ -332,7 +332,7 @@ export class RustMap {
     }
   }
 
-  private ladder(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, bottom: number, top: number, facing: THREE.Vector3) {
+  protected ladder(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, bottom: number, top: number, facing: THREE.Vector3) {
     const h = top - bottom + 0.6; const cy = bottom + h / 2 - 0.3;
     const side = new THREE.Vector3(-facing.z, 0, facing.x);
     for (const s of [-1, 1]) B.box(M.steelPainted, [0.06, h, 0.06], [x + side.x * 0.28 * s, cy, z + side.z * 0.28 * s], { collide: false, tile: 1 });
@@ -342,7 +342,7 @@ export class RustMap {
   }
 
   // ---------------------------------------------------------------- STRUCTURES
-  private container(B: Builder, M: Record<string, THREE.Material>, mat: THREE.Material, x: number, y: number, z: number, yawDeg: number, len: number, opts: { openA?: boolean; openB?: boolean } = {}) {
+  protected container(B: Builder, M: Record<string, THREE.Material>, mat: THREE.Material, x: number, y: number, z: number, yawDeg: number, len: number, opts: { openA?: boolean; openB?: boolean } = {}) {
     const w = 2.44, h = 2.6, t = 0.06; const yaw = yawDeg * DEG;
     const rot: [number, number, number] = [0, yaw, 0];
     const local = (lx: number, ly: number, lz: number): [number, number, number] => [x + lx * Math.cos(yaw) + lz * Math.sin(yaw), y + ly, z - lx * Math.sin(yaw) + lz * Math.cos(yaw)];
@@ -365,7 +365,7 @@ export class RustMap {
     B.box(M.steelDark, [len, 0.12, 0.12], local(0, h + 0.02, -w / 2 + 0.06), { rot, tile: 1, collide: false });
   }
 
-  private buildStructures(B: Builder, M: Record<string, THREE.Material>) {
+  protected buildStructures(B: Builder, M: Record<string, THREE.Material>) {
     // --- Shipping containers
     this.container(B, M, M.contBlue, 19, 0, -19, 0, 12.2, { openA: true });          // NE long, open east end
     this.container(B, M, M.contRed, 17.5, 2.6, -21.8, 8, 12.2);                        // stacked on top, offset back
@@ -483,7 +483,7 @@ export class RustMap {
     B.box(M.roughWood, [0.16, 2.6, 0.16], [-6.2, 1.3, 3.6], { tile: 1 }); B.box(M.roughWood, [0.16, 2.6, 0.16], [-2.8, 1.3, 3.6], { tile: 1 });
   }
 
-  private ramp(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, y0: number, y1: number, run: number, width: number, dirDeg: number, mat: THREE.Material) {
+  protected ramp(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, y0: number, y1: number, run: number, width: number, dirDeg: number, mat: THREE.Material) {
     const rise = y1 - y0; const len = Math.hypot(run, rise); const ang = Math.atan2(rise, run); const yaw = dirDeg * DEG;
     const dir = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
     const mx = x + dir.x * run / 2, mz = z + dir.z * run / 2, my = y0 + rise / 2;
@@ -495,7 +495,7 @@ export class RustMap {
     for (const s of [-1, 1]) { const off = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(width / 2 - 0.1); B.box(M.roughWood, [0.12, 0.12, len], [mx + off.x * s, my + 0.1, mz + off.z * s], { rot: [e.x, e.y, e.z], tile: 1, collide: false }); }
   }
 
-  private sandbags(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, yawDeg: number) {
+  protected sandbags(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, yawDeg: number) {
     const yaw = yawDeg * DEG;
     for (let row = 0; row < 3; row++) for (let i = 0; i < 4; i++) {
       const off = (i - 1.5) * 0.62 + (row % 2) * 0.31; const y = 0.14 + row * 0.26;
@@ -505,7 +505,7 @@ export class RustMap {
   }
 
   // ---------------------------------------------------------------- PROPS
-  private buildProps(B: Builder, M: Record<string, THREE.Material>) {
+  protected buildProps(B: Builder, M: Record<string, THREE.Material>) {
     const barrel = (x: number, z: number, mat: THREE.Material, tipped = false, y = 0) => {
       if (tipped) B.cyl(mat, 0.3, 0.88, [x, y + 0.3, z], { rot: [Math.PI / 2, rand(0, 6.28), 0], seg: 18, tile: 0.9 });
       else B.cyl(mat, 0.3, 0.88, [x, y + 0.44, z], { rot: [0, rand(0, 6.28), 0], seg: 18, tile: 0.9 });
@@ -556,7 +556,7 @@ export class RustMap {
   }
 
   // ---------------------------------------------------------------- OUTER RING (8-player expansion)
-  private truck(B: Builder, M: Record<string, THREE.Material>, tx: number, tz: number, yawDeg: number) {
+  protected truck(B: Builder, M: Record<string, THREE.Material>, tx: number, tz: number, yawDeg: number) {
     const yaw = yawDeg * DEG; const rot: [number, number, number] = [0, yaw, 0];
     const L = (lx: number, ly: number, lz: number): [number, number, number] => [tx + lx * Math.cos(yaw) + lz * Math.sin(yaw), ly, tz - lx * Math.sin(yaw) + lz * Math.cos(yaw)];
     B.box(M.rustCoarse, [5.6, 0.5, 2.2], L(0, 0.75, 0), { rot, tile: 1.2 });
@@ -567,7 +567,7 @@ export class RustMap {
     for (const [lx, lz] of [[1.9, 1.05], [1.9, -1.05], [-1.9, 1.05], [-1.9, -1.05]]) B.cyl(M.rubber, 0.48, 0.32, L(lx, 0.48, lz), { rot: [Math.PI / 2, 0, yaw], seg: 18, tile: 1 });
   }
 
-  private watchtower(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, h: number) {
+  protected watchtower(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, h: number) {
     const half = 1.6;
     for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B.box(M.roughWood, [0.22, h + 0.3, 0.22], [x + sx * half, (h + 0.3) / 2, z + sz * half], { tile: 1 });
     B.box(M.planks, [half * 2 + 0.6, 0.12, half * 2 + 0.6], [x, h + 0.06, z], { tile: 1.4, surface: 'wood' });
@@ -582,7 +582,7 @@ export class RustMap {
     this.stair(B, M, x, z + half + 0.35 + h * 1.35, 0, 180, h + 0.12, h * 1.35, 1.3, 'watch');
   }
 
-  private pumpjack(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, yawDeg: number) {
+  protected pumpjack(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, yawDeg: number) {
     const yaw = yawDeg * DEG; const rot: [number, number, number] = [0, yaw, 0];
     const L = (lx: number, ly: number, lz: number): [number, number, number] => [x + lx * Math.cos(yaw) + lz * Math.sin(yaw), ly, z - lx * Math.sin(yaw) + lz * Math.cos(yaw)];
     B.box(M.cracked, [7, 0.3, 3.2], L(0, 0.15, 0), { rot, tile: 3 });
@@ -601,7 +601,7 @@ export class RustMap {
     B.cyl(M.pipe, 0.25, 4, L(4.4, 0.6, 0), { rot: [Math.PI / 2, 0, yaw], tile: 1.2, collide: true });
   }
 
-  private garage(B: Builder, M: Record<string, THREE.Material>, gx: number, gz: number) {
+  protected garage(B: Builder, M: Record<string, THREE.Material>, gx: number, gz: number) {
     const w = 10, d = 8, h = 4.0, t = 0.25;
     B.box(M.concreteFloor, [w + 0.8, 0.2, d + 0.8], [gx, 0.1, gz], { tile: 2.5 });
     B.box(M.corr, [w, h, 0.1], [gx, h / 2 + 0.2, gz + d / 2], { tile: 1.6 });                // back (south)
@@ -622,7 +622,7 @@ export class RustMap {
     B.cyl(M.barrelRust, 0.3, 0.88, [gx + w / 2 - 0.8, 0.64, gz - 2.5], { seg: 18, tile: 0.9 }); B.cyl(M.barrelBlue, 0.3, 0.88, [gx + w / 2 - 1.5, 0.64, gz - 2.9], { seg: 18, tile: 0.9 });
   }
 
-  private pillbox(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, faceYawDeg: number) {
+  protected pillbox(B: Builder, M: Record<string, THREE.Material>, x: number, z: number, faceYawDeg: number) {
     const s = 3.2, h = 2.3, t = 0.4; const yaw = faceYawDeg * DEG; const rot: [number, number, number] = [0, yaw, 0];
     const L = (lx: number, ly: number, lz: number): [number, number, number] => [x + lx * Math.cos(yaw) + lz * Math.sin(yaw), ly, z - lx * Math.sin(yaw) + lz * Math.cos(yaw)];
     B.box(M.cracked, [s + 0.6, 0.2, s + 0.6], L(0, 0.1, 0), { rot, tile: 2 });
@@ -636,7 +636,7 @@ export class RustMap {
     this.sandbags(B, M, ...[L(0, 0, -s / 2 - 1.2)[0], L(0, 0, -s / 2 - 1.2)[2]] as [number, number], faceYawDeg);
   }
 
-  private hangar(B: Builder, M: Record<string, THREE.Material>, hx: number, hz: number, yawDeg: number) {
+  protected hangar(B: Builder, M: Record<string, THREE.Material>, hx: number, hz: number, yawDeg: number) {
     const r = 4.2, len = 14; const yaw = yawDeg * DEG;
     // arch roof (visual) + segmented colliders
     const g = new THREE.CylinderGeometry(r, r, len, 32, 1, true, 0, Math.PI);
@@ -659,7 +659,7 @@ export class RustMap {
     const [cx3, cz3] = L(0.5, 4.5); B.box(M.roughWood, [2.2, 0.9, 0.8], [cx3, 0.75, cz3], { rot: [0, yaw, 0], tile: 1 });
   }
 
-  private buildOuterRing(B: Builder, M: Record<string, THREE.Material>) {
+  protected buildOuterRing(B: Builder, M: Record<string, THREE.Material>) {
     // --- NORTH: second container yard + watchtower
     this.container(B, M, M.contBlue, -14, 0, -38, 0, 12.2, { openA: true });
     this.container(B, M, M.contRed, -15.5, 2.6, -40.6, 6, 12.2);
@@ -705,7 +705,7 @@ export class RustMap {
   }
 
   // ---------------------------------------------------------------- PERIMETER
-  private buildPerimeter(B: Builder, M: Record<string, THREE.Material>) {
+  protected buildPerimeter(B: Builder, M: Record<string, THREE.Material>) {
     // boulders in a ring
     const N = 70;
     for (let i = 0; i < N; i++) {
@@ -754,14 +754,14 @@ export class RustMap {
   }
 
   // ---------------------------------------------------------------- SPAWNS & WAYPOINTS
-  private defineSpawns() {
+  protected defineSpawns() {
     // yaw faces the map center (player convention: forward = (-sin yaw, -cos yaw))
     const S = (x: number, z: number, _yawDeg: number) => this.spawns.push({ pos: new THREE.Vector3(x, this.groundHeight(x, z) + 0.05, z), yaw: Math.atan2(x, z) });
     S(-24, 22, 0); S(24, 22, 0); S(24, -24, 0); S(-24, -24, 0); S(-25, 4, 0); S(25, -14, 0); S(0, 24, 0); S(-2, -26, 0);
     S(-40, 40, 0); S(40, 40, 0); S(40, -40, 0); S(-40, -40, 0); S(-44, 20, 0); S(44, 0, 0); S(0, 45, 0); S(-8, -46, 0); S(30, -44, 0); S(-30, 44, 0); S(44, 30, 0); S(-44, -26, 0);
   }
 
-  private defineWaypoints() {
+  protected defineWaypoints() {
     const W: [number, number, number][] = [];
     const add = (x: number, y: number, z: number) => { W.push([x, y, z]); return W.length - 1; };
     // ground grid (skip inside solids)
