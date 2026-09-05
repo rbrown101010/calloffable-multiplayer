@@ -8,7 +8,8 @@ const localAttempts=new Map();
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST')return res.status(405).json({error:'Use POST.'});
-  const {INSTANT_APP_ID,INSTANT_APP_ADMIN_TOKEN,LOBBY_HOST_KEY,LOBBY_HOST_PIN}=process.env;
+  const {INSTANT_APP_ID,INSTANT_APP_ADMIN_TOKEN}=process.env;
+  const LOBBY_HOST_KEY=process.env.LOBBY_HOST_KEY?.trim(),LOBBY_HOST_PIN=process.env.LOBBY_HOST_PIN?.trim();
   if(!INSTANT_APP_ADMIN_TOKEN||!LOBBY_HOST_KEY||!/^\d{6}$/.test(LOBBY_HOST_PIN||''))return res.status(503).json({error:'The private lobby is being configured. Solo play is available.'});
   let body;try{body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};}catch{return res.status(400).json({error:'Invalid request.'});}
   const action=body.action||'join';
