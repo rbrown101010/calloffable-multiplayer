@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
+import {MeshoptDecoder} from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { RustMap, Builder, Waypoint } from './Map';
 import { G } from './Physics';
 import { pbr, flat } from './Materials';
@@ -8,10 +9,11 @@ import { smoothstep } from './util';
 
 /** 300 x 300 m refinery. Layout and decoration are deterministic on every client. */
 export class SableMap extends RustMap {
-  private static scenery=new Map<string,THREE.Group>();
-  static async preload(){const loader=new GLTFLoader();await Promise.all(['namaqualand_rocks_01','old_military_crate','portable_generator','covered_car'].map(async id=>{const gltf=await loader.loadAsync('/models/scenery/'+id+'/'+id+'.gltf');this.scenery.set(id,gltf.scene);}));}
+  static scenery=new Map<string,THREE.Group>();
+  static async preload(){const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);await Promise.all(['namaqualand_rocks_01','old_military_crate','portable_generator','covered_car','concrete_road_barrier','barrel_03','wooden_military_crate'].map(async id=>{const path=['concrete_road_barrier','barrel_03','wooden_military_crate'].includes(id)?'/models/scenery/'+id+'.glb':'/models/scenery/'+id+'/'+id+'.gltf';const gltf=await loader.loadAsync(path);this.scenery.set(id,gltf.scene);}));}
   override bounds = 150;
   private seed = 4815;
+  private propBatches=new Map<THREE.Mesh,THREE.Matrix4[]>();
   private routePoints: THREE.Vector3[][] = [];
   private dust!: THREE.Points;
   private random() { this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0; return this.seed / 4294967296; }
@@ -117,12 +119,12 @@ export class SableMap extends RustMap {
 
     for(const [x,z] of [[-57,-100],[-28,-79],[12,-90],[38,-59],[-101,51],[39,58],[77,101]]) {
       this.container(B,M,M.contGreen,x,0,z,0,12,{openA:true,openB:true});
-      for(let i=0;i<3;i++) B.box(M.plywood,[1.1,1.1,1.1],[x-6+i*1.2,.55,z+4],{rot:[0,i*.13,0]});
+      for(let i=0;i<3;i++) this.scannedProp('wooden_military_crate',[1.1,1.1,1.1],[x-6+i*1.2,.55,z+4],{rot:[0,i*.13,0]});
     }
     // Deliberate cover clusters in connecting lanes.
     for(const [x,z] of [[-47,-55],[-15,-54],[8,-33],[33,-36],[31,5],[-56,2],[-58,67],[36,71],[91,7],[-5,38],[22,39],[-109,-24]]) {
-      this.sandbags(B,M,x,z,0); B.cyl(M.barrelRust,.36,1.1,[x+3,.55,z],{seg:16});
-      B.box(M.plywood,[1.4,1.4,1.4],[x+4.5,.7,z-1],{rot:[0,.25,0]});
+      this.sandbags(B,M,x,z,0); this.scannedProp('barrel_03',[.72,1.1,.72],[x+3,.55,z]);
+      this.scannedProp('wooden_military_crate',[1.4,1.4,1.4],[x+4.5,.7,z-1],{rot:[0,.25,0]});
     }
     // Perimeter blast wall, distant mesas and foreground stones.
     for(const [x,z,w,d] of [[0,-150,302,1],[0,150,302,1],[-150,0,1,302],[150,0,1,302]]) B.box(M.concrete,[w,3.5,d],[x,1.75,z]);
@@ -137,7 +139,8 @@ export class SableMap extends RustMap {
       if(x<100){ const pts=[new THREE.Vector3(x,7.6,34),new THREE.Vector3(x+13,6.7,34),new THREE.Vector3(x+26,7.6,34)];const c=new THREE.CatmullRomCurve3(pts);B.custom(M.cable,new THREE.TubeGeometry(c,10,.022,4,false),new THREE.Matrix4(),false); }
     }
     this.sign('SABLE REACH  /  RESTRICTED ZONE',0,2.7,119.45,Math.PI,14);
-    this.skylineDistrict(B,M);this.environmentDetail(B,M);this.adventureRoutes(B,M);this.combatExpansion(B,M);this.scannedScenery();
+    this.skylineDistrict(B,M);this.environmentDetail(B,M);this.adventureRoutes(B,M);this.combatExpansion(B,M);this.newDistrict(B,M);this.scannedScenery();
+    for(const [source,transforms]of this.propBatches){const instances=new THREE.InstancedMesh(source.geometry,source.material,transforms.length);transforms.forEach((m,i)=>instances.setMatrixAt(i,m));instances.castShadow=instances.receiveShadow=true;instances.computeBoundingSphere();this.group.add(instances);}this.propBatches.clear();
     B.finish();
     this.physics.step(1/60);
     this.navigation();
@@ -176,7 +179,7 @@ export class SableMap extends RustMap {
     B.box(M.concreteFloor,[4,.25,3],[9,6.2,-55]);
     B.box(M.concreteFloor,[4,.25,6],[0,6.2,-60]);
     for(const [x,z,y]of [[-4,-49,3.325],[3,-55,6.325],[4,-47,.225],[-5,-55,.225]]){
-      B.box(M.plywood,[2,1.25,1],[x,y+.625,z]);
+      this.scannedProp('wooden_military_crate',[2,1.25,1],[x,y+.625,z]);
       B.box(M.steelDark,[2.1,.1,1.1],[x,y+1.3,z],{collide:false});
     }
     this.routePoints.push([new THREE.Vector3(10,0,-39),new THREE.Vector3(10,1.7,-42.5),new THREE.Vector3(10,3.325,-46),new THREE.Vector3(3,3.325,-49)]);
@@ -221,6 +224,15 @@ export class SableMap extends RustMap {
     // Functional culvert collision: side walls and ceiling leave a walkable interior.
     for(const x of [-22,-18]){for(const dx of [-1.55,1.55])B.box(M.concrete,[.25,2.5,9],[x+dx,1.25,-72]);B.box(M.concrete,[3.3,.4,9],[x,2.7,-72]);}
   }
+  private scannedProp(id:string,size:number[],pos:number[],options:{rot?:number[]}={}){
+    const source=SableMap.scenery.get(id)!;source.updateMatrixWorld(true);
+    const bb=new THREE.Box3().setFromObject(source),dimensions=bb.getSize(new THREE.Vector3()),center=bb.getCenter(new THREE.Vector3());
+    const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(...(options.rot||[0,0,0]) as [number,number,number]));
+    const scale=new THREE.Vector3(size[0]/dimensions.x,size[1]/dimensions.y,size[2]/dimensions.z),p=new THREE.Vector3(...pos as [number,number,number]);
+    const transform=new THREE.Matrix4().compose(p,q,scale).multiply(new THREE.Matrix4().makeTranslation(-center.x,-center.y,-center.z));
+    source.traverse(o=>{if(o instanceof THREE.Mesh){if(!this.propBatches.has(o))this.propBatches.set(o,[]);this.propBatches.get(o)!.push(transform.clone().multiply(o.matrixWorld));}});
+    this.physics.addStaticBox(p,new THREE.Vector3(...size as [number,number,number]),q,G.WORLD,{surface:id.includes('crate')?'wood':'metal'});
+  }
   private scannedScenery(){
     const place=(id:string,x:number,z:number,height:number,yaw:number,part?:number,collide=false,y=0)=>{
       const asset=SableMap.scenery.get(id);if(!asset)return;
@@ -230,6 +242,7 @@ export class SableMap extends RustMap {
       const normalized=new THREE.Group();object.position.sub(new THREE.Vector3(center.x,box.min.y,center.z));normalized.add(object);
       normalized.scale.setScalar(height/size.y);normalized.rotation.y=yaw;normalized.position.set(x,y+this.groundHeight(x,z),z);
       normalized.traverse((o:any)=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;const m=o.material;for(const key of ['map','normalMap','roughnessMap'])if(m[key])m[key].anisotropy=4;}});
+      if(id.includes('rocks')){normalized.updateMatrixWorld(true);const bb=new THREE.Box3().setFromObject(normalized);let lowest=this.groundHeight(x,z);for(const xx of[bb.min.x,bb.max.x])for(const zz of[bb.min.z,bb.max.z])lowest=Math.min(lowest,this.groundHeight(xx,zz));normalized.position.y=y+lowest-height*.15;}
       this.group.add(normalized);
       if(collide){const bounds=new THREE.Box3().setFromObject(normalized);this.physics.addStaticBox(bounds.getCenter(new THREE.Vector3()),bounds.getSize(new THREE.Vector3()),undefined,G.WORLD,{surface:id.includes('rocks')?'rock':'metal'});}
     };
@@ -242,6 +255,8 @@ export class SableMap extends RustMap {
     }
     for(const [x,z,a]of [[34,23,0],[-62,24,20],[57,73,90],[84,56,10],[-82,98,0],[20,-52,70]])place('covered_car',x,z,1.9,a*Math.PI/180,undefined,true);
     for(const [x,z]of [[-30,53],[-7,69],[19,54],[-40,86],[82,36],[-76,73]])place('portable_generator',x,z,1.2,this.random()*6.28,undefined,true);
+    for(const [x,z]of [[-116,22],[117,83],[24,-108],[-45,37],[65,113],[-122,-11],[13,-113]])place('concrete_road_barrier',x,z,1.1,0,undefined,true);
+    for(const [x,z]of [[-122,12],[75,117],[13,-119],[35,-15],[-48,55],[86,-29]]){place('barrel_03',x,z,1.05,0,undefined,true);place('wooden_military_crate',x+1.5,z+.3,.9,.15,undefined,true);}
   }
   private environmentDetail(B:Builder,M:Record<string,THREE.Material>){
     // Steel lattice on the freight gantry, service ducts and generator enclosures.
@@ -298,7 +313,7 @@ export class SableMap extends RustMap {
       for(const dz of[-3.6,3.6])B.box(M.concrete,[.28,.7,2.8],[x+6,y+h+.46,z+dz]);
       this.stair(B,M,x+7.4,z+8,y,180,y+h+.11,8,2.3,'outpost-roof');
       B.box(M.concreteFloor,[4,.22,2.4],[x+6.8,y+h,z]);
-      B.box(M.plywood,[2,1.1,1.2],[x-2,y+.77,z-2]);B.box(M.steelDark,[2,.7,1],[x+2,y+h+.46,z+1]);
+      this.scannedProp('wooden_military_crate',[2,1.1,1.2],[x-2,y+.77,z-2]);B.box(M.steelDark,[2,.7,1],[x+2,y+h+.46,z+1]);
       this.routePoints.push([new THREE.Vector3(x+7.4,y,z+8),new THREE.Vector3(x+7.4,y+h/2,z+4),new THREE.Vector3(x+7.4,y+h+.11,z),new THREE.Vector3(x+3,y+h+.11,z)]);
       this.sign(name,x,y+3.05,z+5.18,0,5);
     }
@@ -330,7 +345,7 @@ export class SableMap extends RustMap {
           // Recessed glass panels alternate with genuinely open windows.
           if((floor+Math.round(x))%2===0&&floor>0)B.box(M.window,[2.1,2.2,.08],[x-1.9,y+2,side*11.95]);
         }
-        B.box(M.facade,[.3,.85,24],[side*14,y+.425,0]);B.box(M.facade,[.3,1.1,24],[side*14,y+H-.55,0]);
+        if(floor===7&&side===1){B.box(M.facade,[.3,.85,19],[side*14,y+.425,-2.5]);B.box(M.facade,[.3,.85,1],[side*14,y+.425,11.5]);}else B.box(M.facade,[.3,.85,24],[side*14,y+.425,0]);B.box(M.facade,[.3,1.1,24],[side*14,y+H-.55,0]);
         for(const z of[-8,-4,0,4,8])B.box(M.steelDark,[.4,H,.35],[side*14,y+H/2,z]);
       }
       // Lift rear and side walls, with an unobstructed front landing.
@@ -341,7 +356,7 @@ export class SableMap extends RustMap {
       // Interior rooms, low desks, and an offset wall prevent full-length floor camping.
       B.box(M.facade,[.25,2.7,6],[-3,y+1.35,floor%2?4:-3]);
       B.box(M.darkPlanks,[2.8,.9,1.1],[1,y+.45,floor%2?-6:6]);
-      B.box(M.plywood,[1.3,1.15,1.3],[5,y+.575,-7]);
+      this.scannedProp('wooden_military_crate',[1.3,1.15,1.3],[5,y+.575,-7]);
       this.sign(String(floor+1).padStart(2,'0')+' / '+['LOBBY','SECURITY','OPERATIONS','RESEARCH','COMMAND','OBSERVATION','EXECUTIVE','SKY LOUNGE'][floor],0,y+3.1,-11.75,0,5);
       if(floor<7){
         this.stair(B,M,-12,-6,y,0,y+H/2,12,2.6,'tower-up');
@@ -370,7 +385,59 @@ export class SableMap extends RustMap {
     // Rooftop connector over the southern alley and sheltered vehicle crossing.
     B.box(M.grate,[26,.22,3],[-9,4.72,115]);for(const x of[-21,3])B.box(M.steelDark,[.3,4.7,.3],[x,2.35,115]);
     this.stair(B,M,-26,115,0,90,4.83,10,2.6,'district-bridge');this.stair(B,M,10,115,0,270,4.83,10,2.6,'district-bridge');
-    for(const [x,z]of [[-112,35],[-110,77],[-85,131],[-32,131],[61,130],[119,4],[126,-60]]){this.sandbags(B,M,x,z,0);B.box(M.plywood,[1.5,1.4,1.5],[x+5,.7,z+2]);}
+    for(const [x,z]of [[-112,35],[-110,77],[-85,131],[-32,131],[61,130],[119,4],[126,-60]]){this.sandbags(B,M,x,z,0);this.scannedProp('wooden_military_crate',[1.5,1.4,1.5],[x+5,.7,z+2]);}
+  }
+  /** Three enterable strongholds, with exposed approaches, covered rooms and alternate roof routes. */
+  private newDistrict(B:Builder,M:Record<string,THREE.Material>){
+    const buildings:[number,number,string,number][]=[[18,-126,'NORTH SIGNALS',18],[-129,7,'WEST ARMORY',16],[80,126,'LOGISTICS HQ',22]];
+    for(const [x,z,name,w]of buildings){
+      const h=3.8,base=.22,d=12;
+      for(let floor=0;floor<2;floor++){
+        const y=base+floor*h;
+        B.box(M.concreteFloor,[w,.22,d],[x,y-.11,z]);
+        // Through doors and offset partitions make every interior a flanking route.
+        for(const side of[-1,1]){
+          for(const dx of[-1,1])B.box(M.facade,[(w-3.2)/2,h,.32],[x+dx*(w+3.2)/4,y+h/2,z+side*d/2]);
+          B.box(M.facade,[3.2,1,.32],[x,y+h-.5,z+side*d/2]);
+        }
+        // West firing windows have structural jambs and waist-height sills.
+        B.box(M.facade,[.32,.85,d],[x-w/2,y+.425,z]);B.box(M.facade,[.32,1.1,d],[x-w/2,y+h-.55,z]);
+        for(const dz of[-6,-2,2,6])B.box(M.steelDark,[.35,h,.3],[x-w/2,y+h/2,z+dz]);
+        // East landing door at z+3 connects the ground and upper floors to the scaffold.
+        B.box(M.facade,[.32,h,7.5],[x+w/2,y+h/2,z-2.25]);B.box(M.facade,[.32,h,1.5],[x+w/2,y+h/2,z+5.25]);B.box(M.facade,[.32,1,3],[x+w/2,y+h-.5,z+3]);
+        B.box(M.facade,[.25,2.65,4],[x-2,y+1.325,z-1]);B.box(M.darkPlanks,[3,.85,1.2],[x+2,y+.425,z-3]);
+        for(const side of[-1,1])B.box(M.steelDark,[w+.4,.17,.25],[x,y+h-.06,z+side*6.15],{collide:false});
+      }
+      const roof=base+2*h;
+      B.box(M.concreteFloor,[w+.5,.24,12.5],[x,roof-.12,z]);
+      for(const side of[-1,1])B.box(M.concrete,[w,.72,.28],[x,roof+.36,z+side*6]);B.box(M.concrete,[.28,.72,12],[x-w/2,roof+.36,z]);
+      const stairX=x+w/2+1.6;
+      this.stair(B,M,stairX,z+11,base,180,base+h,8,2.7,'district-upper');
+      B.box(M.grate,[4,.2,3],[x+w/2+.5,base+h-.1,z+2.5]);
+      this.stair(B,M,stairX,z+1,base+h,180,roof,7,2.7,'district-roof');
+      B.box(M.grate,[4,.2,2.4],[x+w/2+.5,roof-.1,z-6]);
+      for(const dz of[-5,3,10])B.box(M.steelDark,[.13,roof,.13],[stairX+1.5,roof/2,z+dz],{collide:false});
+      this.routePoints.push([new THREE.Vector3(stairX,base,z+11),new THREE.Vector3(stairX,base+h/2,z+7),new THREE.Vector3(stairX,base+h,z+3),new THREE.Vector3(x+w/2-1,base+h,z+3)]);
+      this.routePoints.push([new THREE.Vector3(stairX,base+h,z+3),new THREE.Vector3(stairX,base+h,z+1),new THREE.Vector3(stairX,base+h*1.5,z-2.5),new THREE.Vector3(stairX,roof,z-6),new THREE.Vector3(x+w/2-1,roof,z-5)]);
+      // Roof ventilation, a radio mast and short ducts provide distinct silhouettes and cover.
+      B.box(M.greenMetal,[3.4,1.3,1.7],[x-3,roof+.65,z-2]);
+      for(let n=0;n<8;n++)B.box(M.steelDark,[.07,.9,.06],[x-4.3+n*.36,roof+.6,z-1.12],{collide:false});
+      B.cyl(M.steelDark,.065,5.5,[x+3,roof+2.75,z-3],{seg:8,collide:false});
+      for(const y of[roof+3.8,roof+4.6])B.box(M.steelDark,[2.8,.045,.045],[x+3,y,z-3],{collide:false});
+      this.sign(name,x,6.4,z+6.18,0,Math.min(10,w-2));this.sign('02 / ROOF ACCESS',x+w/2+.2,5,z+3,Math.PI/2,2.5);
+      for(const dx of[-w/2+1,w/2-1])B.box(M.concrete,[3,1.1,.7],[x+dx,.55,z+9]);
+    }
+    // Roof ladder is reached from floor eight; the top landing leads directly to the zip-line gantry.
+    this.ladder(B,M,14.6,9,29.7,34.4,new THREE.Vector3(-1,0,0));
+    this.ladders.at(-1)!.landing=new THREE.Vector3(12.8,34.4,9);this.ladders.at(-1)!.halfW=.9;
+    B.box(M.grate,[3,.18,3],[15,29.62,9]);
+    this.sign('ZIP LINE / FREIGHT',12,31.7,10.4,0,3);
+    // A covered checkpoint and staggered retaining walls create new crossing choices.
+    for(const [x,z]of [[-116,28],[113,80],[21,-106]]){
+      for(const dx of[-3.5,3.5])B.box(M.concrete,[.45,3.6,.45],[x+dx,1.8,z]);B.box(M.corr,[8,.18,4.5],[x,3.6,z]);
+      for(const dx of[-4.8,4.8])B.box(M.concrete,[2.6,1.15,.8],[x+dx,.575,z+2]);
+      this.sign('CHECKPOINT',x,3,z+2.35,0,3.5);
+    }
   }
   private commandBuilding(B:Builder,M:Record<string,THREE.Material>,x:number,z:number){
     const h=4.6,w=15,d=12;
@@ -383,7 +450,7 @@ export class SableMap extends RustMap {
       for(const xx of [-4.5,4.5]){B.box(M.window,[2,1.25,.06],[x+xx,2.7,z+s*(d/2+.19)],{collide:false});B.box(M.steelDark,[2.3,.1,.3],[x+xx,2.0,z+s*(d/2+.25)],{collide:false});}
     }
     B.box(M.concreteBlock,[.25,3,4],[x+2,1.5,z+2]);
-    B.box(M.darkPlanks,[2.6,.9,.8],[x-4,.55,z-3]); B.box(M.plywood,[1.1,1.2,1.1],[x+5,.6,z+3]);
+    B.box(M.darkPlanks,[2.6,.9,.8],[x-4,.55,z-3]); this.scannedProp('wooden_military_crate',[1.1,1.2,1.1],[x+5,.6,z+3]);
     B.box(M.steelDark,[2.1,1,1.5],[x-3,h+.65,z],{tile:1});
     this.stair(B,M,x+w/2+2,z+11,0,180,h+.13,10,2.3,'roof');
     B.box(M.concreteFloor,[4,.24,2.5],[x+w/2+1,h,z+.8]);

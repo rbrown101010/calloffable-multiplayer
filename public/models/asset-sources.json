@@ -1,0 +1,142 @@
+[
+  {
+    "id": "m249",
+    "title": "M249",
+    "creator": "Dmitriy Korotkov",
+    "source": "https://sketchfab.com/3d-models/m249-b1e60faa37de4461822103fe38e5c9ce",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/m249.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "m14",
+    "title": "Low-Poly Mk14 EBR",
+    "creator": "notcplkerry",
+    "source": "https://sketchfab.com/3d-models/low-poly-mk14-ebr-3a20a47cf8594777b406370689fb84f4",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/m14.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "p90",
+    "title": "P90 Sub Machinegun",
+    "creator": "commiessar",
+    "source": "https://sketchfab.com/3d-models/p90-sub-machinegun-19b39a4ee12442078c7c79c52118e01f",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/p90.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "vector",
+    "title": "KRISS Vector (FREE)",
+    "creator": "___konstantsin___",
+    "source": "https://sketchfab.com/3d-models/kriss-vector-free-f5e6f9c35cb2440196166815b018fec3",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/vector.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "g36",
+    "title": "G36c",
+    "creator": "Sheikh Miah",
+    "source": "https://sketchfab.com/3d-models/g36c-15843d0048d7420d82dfdb3a3ca252e8",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/g36.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "rpg7",
+    "title": "RPG 7 ( Free Model )",
+    "creator": "javadbayat",
+    "source": "https://sketchfab.com/3d-models/rpg-7-free-model-99c0af8a1803490a86edc48cd3bfc700",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/rpg7.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "mp7",
+    "title": "H&K MP7 A1",
+    "creator": "Steve Henry",
+    "source": "https://sketchfab.com/3d-models/hk-mp7-a1-27cd4b48fb14451c86adad4c559082d6",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/mp7.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "m32",
+    "title": "Milkor M32 MGL",
+    "creator": "JaumWF",
+    "source": "https://sketchfab.com/3d-models/milkor-m32-mgl-b27a628949b248399958e2fe8417421e",
+    "license": "CC Attribution-NonCommercial",
+    "licenseUrl": "http://creativecommons.org/licenses/by-nc/4.0/",
+    "file": "/models/weapons/m32.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "atv",
+    "title": "Quad Bike 3d",
+    "creator": "Tech developers",
+    "source": "https://sketchfab.com/3d-models/quad-bike-3d-aa9d465112c8419a832f204e0d97fa52",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/vehicles/atv.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "motorcycle",
+    "title": "2022 Yamaha YZ450F",
+    "creator": "Res1n",
+    "source": "https://sketchfab.com/3d-models/2022-yamaha-yz450f-dfff1637219f44d6bfa3ed3c9708d523",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/vehicles/motorcycle.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "spas12",
+    "title": "Spas 12",
+    "creator": "Luiz Bueno",
+    "source": "https://sketchfab.com/3d-models/spas-12-614140daf5e4467fa0e36b6c23d70621",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/spas12.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "ak47",
+    "title": "AK47 with scope",
+    "creator": "Wolf Schevelenbos",
+    "source": "https://sketchfab.com/3d-models/ak47-with-scope-d4d9720f3677485b958ceecc02f7965c",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/ak47.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "helicopter",
+    "title": "Hind Attack Helicopter",
+    "creator": "Ashley Aslett",
+    "source": "https://sketchfab.com/3d-models/hind-attack-helicopter-bb65bdfde2c54007a52dfbe1d91d930d",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/vehicles/helicopter.glb",
+    "changes": "Reoriented, scaled, optimized geometry and textures; moving assemblies separated; selected attachments removed; motorcycle recolored."
+  },
+  {
+    "id": "optic",
+    "title": "EOTech sight extracted from HK MP7 A1",
+    "creator": "Steve Henry",
+    "source": "https://sketchfab.com/3d-models/hk-mp7-a1-27cd4b48fb14451c86adad4c559082d6",
+    "license": "CC Attribution",
+    "licenseUrl": "http://creativecommons.org/licenses/by/4.0/",
+    "file": "/models/weapons/optic.glb",
+    "changes": "Extracted optical sight, normalized dimensions, removed glass and reticle surfaces to provide an unobstructed in-game sight."
+  }
+]

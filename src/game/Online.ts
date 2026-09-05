@@ -1,3 +1,4 @@
+import type { ZipRide } from './Ziplines';
 import type { ElevatorState } from './Elevator';
 import type { ProjectileState } from './Ordnance';
 import type { StreakState } from './Killstreaks';
@@ -15,7 +16,7 @@ import type { EntityHit } from './Weapons';
 
 type Presence={peerId?:string;id:string;name:string;joined:number;ready:boolean;loadout:number;equipment:Equipment;mic:boolean;owner:boolean;preparedRound:string;world?:World;};
 type Pose={id:string;name:string;p:number[];yaw:number;pitch:number;ads:number;speed:number;crouch:boolean;weapon:string;health:number;alive:boolean;kills:number;deaths:number;score:number;streak:number;deathAt:number;deathStyle:number;deathDir:number[];life:number;loadout:number;equipment:Equipment;vehicle?:number;};
-type World={seq?:number;round:string;map:MapId;phase:'lobby'|'loading'|'playing'|'ended';startAt:number;endsAt:number;limit:number;bots:number;maxPlayers:number;kicked:string[];streaks?:StreakState;projectiles?:ProjectileState[];elevator?:ElevatorState;entities:Pose[];vehicles?:VehicleState[];items?:FieldState[];};
+type World={seq?:number;round:string;map:MapId;phase:'lobby'|'loading'|'playing'|'ended';startAt:number;endsAt:number;limit:number;bots:number;maxPlayers:number;kicked:string[];streaks?:StreakState;projectiles?:ProjectileState[];elevator?:ElevatorState;ziplines?:ZipRide[];entities:Pose[];vehicles?:VehicleState[];items?:FieldState[];};
 const vec=(p:number[])=>new THREE.Vector3(p[0],p[1],p[2]);
 const clean=(s:string)=>String(s||'OPERATOR').replace(/[^a-zA-Z0-9 _-]/g,'').slice(0,16);
 const classIndex=(i:number)=>Number.isInteger(i)&&!!LOADOUTS[i]?i:0;
@@ -129,7 +130,7 @@ export class Online {
       this.mic=new VoiceChat(this.id,data.iceServers,msg=>this.send(msg));
       this.mic.onChange=()=>{this.publishPresence();this.render();};this.mic.onError=m=>this.status(m);
       // Map-loading acknowledgements must not mix with older single-map browser tabs.
-      this.room=this.db.joinRoom('sable',data.roomId+'-match-v6',{initialPresence:this.presence()});
+      this.room=this.db.joinRoom('sable',data.roomId+'-match-v7',{initialPresence:this.presence()});
       this.unsubs.push(this.room.subscribePresence({},slice=>{
         if(!this.connected||this.db!==client)return;
         if(slice.error){this.status('Lobby connection error. Rejoin to try again.');return;}
@@ -143,7 +144,7 @@ export class Online {
         if(!this.connected||this.db!==client||!peer?.id||peer.id===this.id||!this.peers.has(peer.id))return;
         // This SDK passes the raw presence object to topic callbacks, without peerId.
         // Resolve its identity in the transport cache; never trust a payload's peerId.
-        const transportPeers=(client._reactor as any)._presence[this.sessionRoom+'-match-v6']?.result?.peers||{};
+        const transportPeers=(client._reactor as any)._presence[this.sessionRoom+'-match-v7']?.result?.peers||{};
         const transportId=Object.keys(transportPeers).find(id=>transportPeers[id]===peer);
         if(!transportId||this.verifiedPeers.get(transportId)!==peer.id)return;
         this.receive(peer.id,data);
@@ -275,7 +276,7 @@ export class Online {
   }
   private pose(e:any,id:string):Pose{return{id,name:e.name,p:[e.pos.x,e.feetY,e.pos.z].map(roundNumber),yaw:roundNumber(e===this.g.player?e.yaw+Math.PI:e.aimYaw),pitch:roundNumber(e===this.g.player?e.pitch:e.aimPitch),ads:roundNumber(e===this.g.player?e.ads:e.netADS||0),speed:roundNumber(e===this.g.player?e.speed:Math.hypot(e.vel.x,e.vel.z)),crouch:e===this.g.player?e.crouching:e.crouch,weapon:e===this.g.player?this.g.gunplay.def?.id:e.def.id,health:roundNumber(e.health),alive:e.alive,kills:e.kills,deaths:e.deaths,score:e.score,streak:e.streak,deathAt:this.deathTimes.get(id)||0,deathStyle:e.deathStyle||0,deathDir:e.deathDir?.toArray()||[0,0,1],life:e.life||0,loadout:e.loadoutIdx||0,equipment:e.equipment||e.loadout||validateEquipment(null),vehicle:this.g.vehicles.list.find(v=>v.driver===id)?.id};}
   private snapshot(){const count=Math.max(0,Math.min(this.world.bots,this.world.maxPlayers-this.peers.size));return[this.pose(this.g.player,this.id),...[...this.remotes].map(([id,b])=>this.pose(b,id)),...this.g.bots.bots.slice(0,count).map(b=>this.pose(b,'bot-'+b.id))];}
-  private broadcastWorld(){if(!this.isHost)return;this.world.seq=(this.world.seq||0)+1;if(this.world.phase==='playing'||this.world.phase==='ended'){this.world.entities=this.snapshot();this.world.vehicles=this.g.vehicles.snapshot();this.world.items=this.g.fieldItems.snapshot();this.world.streaks=this.g.killstreaks.snapshot();this.world.projectiles=this.g.ordnance.snapshot();this.world.elevator=this.g.elevator.state;}else{this.world.entities=[];this.world.vehicles=[];this.world.items=[];}this.send({kind:'world',world:this.world,events:this.events.slice(-12)});}
+  private broadcastWorld(){if(!this.isHost)return;this.world.seq=(this.world.seq||0)+1;if(this.world.phase==='playing'||this.world.phase==='ended'){this.world.entities=this.snapshot();this.world.vehicles=this.g.vehicles.snapshot();this.world.items=this.g.fieldItems.snapshot();this.world.streaks=this.g.killstreaks.snapshot();this.world.projectiles=this.g.ordnance.snapshot();this.world.elevator=this.g.elevator.state;this.world.ziplines=this.g.ziplines.snapshot();}else{this.world.entities=[];this.world.vehicles=[];this.world.items=[];}this.send({kind:'world',world:this.world,events:this.events.slice(-12)});}
   private receive(from:string,data:any){
     if(!data||typeof data.kind!=='string')return;
     if(data.kind==='voice'||data.kind==='voice-reset'||data.kind==='voice-renegotiate'||data.kind==='voice-audio'){void this.mic?.signal(from,data);return;}
@@ -284,6 +285,7 @@ export class Online {
     if(data.kind==='world'&&from===this.hostId){this.lastHostPacket=Date.now();this.receiveWorld(data.world);for(const event of data.events||[])this.applyEvent(event);return;}
     if(data.kind==='class'){const p=this.peers.get(from);if(p){p.loadout=classIndex(data.loadout);p.equipment=validateEquipment(data.equipment);}this.render();return;}
     if(data.round!==this.world.round||!this.active||this.starting||this.g.mapChanging)return;
+    if(data.kind==='zipline-action'&&this.isHost&&Date.now()>=this.world.startAt){if(data.action==='enter'||data.action==='exit')this.g.ziplines.authorize(from,data.line,data.from,data.action);this.broadcastWorld();return;}
     if(data.kind==='elevator-call'&&this.isHost&&Date.now()>=this.world.startAt){this.g.elevator.authorize(this.entity(from),data.floor);this.broadcastWorld();return;}
     if(data.kind==='vehicle-action'&&this.isHost&&this.active&&Date.now()>=this.world.startAt){if(data.action==='enter'||data.action==='exit'){this.g.vehicles.authorize(from,data.id,data.action);this.broadcastWorld();}return;}
     if(data.kind==='field-claim'&&this.isHost&&this.active){this.g.fieldItems.claim(from,data.id);this.broadcastWorld();return;}
@@ -320,6 +322,7 @@ export class Online {
     if(world.phase==='ended'&&this.g.state!=='ended'){this.g.match.over=true;this.g.showEndScreen();}
   }
   private applyWorld(world:World){
+    if(world.ziplines)this.g.ziplines.apply(world.ziplines);
     if(world.streaks)this.g.killstreaks.apply(world.streaks);if(world.projectiles)this.g.ordnance.apply(world.projectiles);if(world.elevator)this.g.elevator.apply(world.elevator);
     if(world.vehicles)this.g.vehicles.apply(world.vehicles);if(world.items)this.g.fieldItems.apply(world.items);
     const activeBots=new Set(world.entities.filter(p=>p.id.startsWith('bot-')).map(p=>p.id));
@@ -355,7 +358,8 @@ export class Online {
     for(const [id,p]of this.poseTargets){
       if(id===this.id)continue;const e=this.entity(id) as Bot;if(!e)continue;
       const y=p.p[1]+(p.crouch?.56:.9),t=1-Math.exp(-dt*18);const dest=new THREE.Vector3(p.p[0],y,p.p[2]);
-      if(e.pos.distanceTo(dest)>6)e.pos.copy(dest);else e.pos.lerp(dest,t);
+      const zipRide=this.g.ziplines.rides.get(id);if(zipRide)dest.copy(this.g.ziplines.position(zipRide)).add(new THREE.Vector3(0,.9,0));
+      if(zipRide||e.pos.distanceTo(dest)>6)e.pos.copy(dest);else e.pos.lerp(dest,t);
       const riding=this.g.vehicles.list.some(v=>v.driver===id);
       if(e.crouch!==p.crouch||(e as any).riding!==riding){
         (e as any).riding=riding;e.crouch=p.crouch;e.stance=p.crouch;
@@ -368,7 +372,7 @@ export class Online {
       if(WEAPONS[p.weapon]&&e.def.id!==p.weapon){e.def=WEAPONS[p.weapon];void e.puppet?.setWeapon(e.def);}
       e.puppet?.setVisible((this.active||this.world.phase==='ended')&&(e.alive||now-(this.deathTimes.get(id)||0)<3500));
       if(!e.puppet?.model.visible)continue;
-      e.puppet?.update(dt,{pos:e.pos,feetY:e.feetY,yaw:p.yaw,aimYaw:p.yaw,aimPitch:p.pitch,speed:p.speed,crouch:p.crouch,riding,motorcycle:this.g.vehicles.list.find(v=>v.driver===id)?.kind==='motorcycle',alive:e.alive,deathT:(now-(this.deathTimes.get(id)||now))/1000,deathStyle:e.deathStyle,deathDir:e.deathDir});
+      e.puppet?.update(dt,{pos:e.pos,feetY:e.feetY,yaw:p.yaw,aimYaw:p.yaw,aimPitch:p.pitch,speed:p.speed,crouch:p.crouch,ziplining:!!zipRide,riding,motorcycle:this.g.vehicles.list.find(v=>v.driver===id)?.kind==='motorcycle',alive:e.alive,deathT:(now-(this.deathTimes.get(id)||now))/1000,deathStyle:e.deathStyle,deathDir:e.deathDir});
     }
     if(this.active&&now-this.lastSend>66){this.lastSend=now;if(this.isHost)this.broadcastWorld();else this.send({kind:'pose',seq:++this.poseSeq,pose:this.pose(this.g.player,this.id),vehicle:this.g.vehicles.snapshot().find(v=>v.driver===this.id)});}
     if(now-this.lastPresence>1500){this.lastPresence=now;this.publishPresence();this.render();}
@@ -391,7 +395,7 @@ export class Online {
     const d=this.g.gunplay.def,seq=++this.shotSeq;for(const b of this.g.bullets.list)if(b.owner===this.g.player&&b.age===0)(b as any).seq=seq;
     const packet={kind:'fire',weapon:d.id,seq,p:this.g.player.eyePos.toArray(),d:this.g.player.forward.toArray()};if(this.isHost)this.registerShot(this.id,packet);this.send(packet);
   }
-  private registerShot(id:string,data:any){const e=this.entity(id),def=WEAPONS[data.weapon];if(!this.active||Date.now()<this.world.startAt||!e?.alive||!def)return;const old=this.shots.get(id),now=Date.now();if(old&&(data.seq<=old.seq||now-old.at<60000/def.rpm*.7))return;const lo=e.equipment||e.loadout||validateEquipment(null);if(![lo.primary,lo.secondary].includes(def.id))return;this.shots.set(id,{seq:data.seq,at:now,weapon:def.id,remaining:def.projectile?0:def.pellets});if(def.projectile)this.g.ordnance.launch(e,def.id);}
+  private registerShot(id:string,data:any){const e=this.entity(id),def=WEAPONS[data.weapon];if(!this.active||Date.now()<this.world.startAt||!e?.alive||!def)return;const old=this.shots.get(id),now=Date.now();if(old&&(data.seq<=old.seq||now-old.at<60000/def.rpm*(def.projectile?.98:.7)))return;const lo=e.equipment||e.loadout||validateEquipment(null);if(![lo.primary,lo.secondary].includes(def.id))return;this.shots.set(id,{seq:data.seq,at:now,weapon:def.id,remaining:def.projectile?0:def.pellets});if(def.projectile)this.g.ordnance.launch(e,def.id);}
   hit(h:EntityHit){
     if((h.bullet as any).visualOnly||!this.active)return;
     const from=this.entityId(h.bullet.owner),target=this.entityId(h.owner.entity);
@@ -438,6 +442,7 @@ export class Online {
   private remoteFire(id:string,weapon:string,p:number[],d:number[]){const def=WEAPONS[weapon],e=this.entity(id);if(!def||!e||!p?.every(Number.isFinite)||!d?.every(Number.isFinite))return;this.g.deathReplay.recordShot(e,weapon);const pos=vec(p),dir=vec(d);this.g.effects.muzzleFlashWorld(pos,dir,def.flashScale);this.g.audio.play3D(def.sounds.far,pos,{vol:.8,ref:6,rolloff:.9});if(!def.projectile){this.g.bullets.fire(def,pos,dir,e);(this.g.bullets.list.at(-1) as any).visualOnly=true;}}
   grenade(pos:THREE.Vector3,velocity:THREE.Vector3,fuse:number){if(this.isHost)this.g.grenades.throw(pos,velocity,fuse,this.g.player);else this.send({kind:'grenade',vel:velocity.toArray(),fuse});}
   explosion(pos:THREE.Vector3){if(this.isHost)this.send({kind:'explosion',p:pos.toArray()});}
+  ziplineAction(line:number,from:number,action:'enter'|'exit'){if(!this.active||Date.now()<this.world.startAt)return;if(this.isHost){this.g.ziplines.authorize(this.id,line,from,action);this.broadcastWorld();}else this.send({kind:'zipline-action',line,from,action});}
   elevatorAction(floor:number){if(!this.active||Date.now()<this.world.startAt)return;if(this.isHost){this.g.elevator.authorize(this.g.player,floor);this.broadcastWorld();}else this.send({kind:'elevator-call',floor});}
   streakAction(data:any){if(!this.active||Date.now()<this.world.startAt)return;if(this.isHost)this.handleStreak(this.id,data);else this.send(data);}
   private handleStreak(from:string,data:any){
@@ -453,5 +458,5 @@ export class Online {
   streakShot(event:any){if(this.isHost){this.g.killstreaks.shot(event);this.send(event);}}
   streakDamage(target:any,attacker:any,amount:number,point:THREE.Vector3){return this.damage(this.entityId(target),this.entityId(attacker),amount,'body','CHOPPER GUNNER',point);}
   finish(){if(!this.isHost||this.world.phase==='ended')return;this.world.phase='ended';this.broadcastWorld();this.publishPresence();this.g.match.over=true;this.g.showEndScreen();this.render();}
-  leave(){clearInterval(this.statusTimer);this.statusTimer=undefined;this.sessionRoom='';this.access='';this.verifiedPeers.clear();this.rawPresence=[];this.myPeerId='';if(this.g.vehicles.current)this.vehicleAction(this.g.vehicles.current.id,'exit');this.g.vehicles.release(this.id);this.g.vehicles.detach();this.connected=false;this.owner=false;this.mic?.destroy();this.unsubs.forEach(fn=>fn());this.unsubs=[];this.room?.leaveRoom();this.db?.shutdown();this.db=undefined;this.room=undefined;for(const b of this.remotes.values())this.disposeRemote(b);this.remotes.clear();this.peers.clear();this.poseTargets.clear();this.g.bots.extraTargets=[];this.g.player.regenDelay=4.2;this.g.showMenu();this.world.phase='lobby';el('join-fields').classList.remove('hidden');el('lobby-session').classList.add('hidden');el('online-bar').classList.add('hidden');el('lobby').classList.add('hidden');el('map-transition').classList.add('hidden');this.preparedRound='';this.worldHost='';this.hostId='';this.ready=false;this.lastRoster='';this.world={round:'',map:this.g.mapId,phase:'lobby',startAt:0,endsAt:0,limit:20,bots:4,maxPlayers:16,kicked:[],entities:[]};}
+  leave(){this.g.ziplines.release(this.id);clearInterval(this.statusTimer);this.statusTimer=undefined;this.sessionRoom='';this.access='';this.verifiedPeers.clear();this.rawPresence=[];this.myPeerId='';if(this.g.vehicles.current)this.vehicleAction(this.g.vehicles.current.id,'exit');this.g.vehicles.release(this.id);this.g.vehicles.detach();this.connected=false;this.owner=false;this.mic?.destroy();this.unsubs.forEach(fn=>fn());this.unsubs=[];this.room?.leaveRoom();this.db?.shutdown();this.db=undefined;this.room=undefined;for(const b of this.remotes.values())this.disposeRemote(b);this.remotes.clear();this.peers.clear();this.poseTargets.clear();this.g.bots.extraTargets=[];this.g.player.regenDelay=4.2;this.g.showMenu();this.world.phase='lobby';el('join-fields').classList.remove('hidden');el('lobby-session').classList.add('hidden');el('online-bar').classList.add('hidden');el('lobby').classList.add('hidden');el('map-transition').classList.add('hidden');this.preparedRound='';this.worldHost='';this.hostId='';this.ready=false;this.lastRoster='';this.world={round:'',map:this.g.mapId,phase:'lobby',startAt:0,endsAt:0,limit:20,bots:4,maxPlayers:16,kicked:[],entities:[]};}
 }

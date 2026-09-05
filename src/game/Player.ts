@@ -278,7 +278,7 @@ export class Player {
     this.pos.y += c ? -dh : dh; this.body.setNextKinematicTranslation(this.pos); this.body.setTranslation(this.pos, true);
   }
 
-  private updateRig(dt: number, ctx?: MoveCtx) {
+  updateRig(dt: number, ctx?: MoveCtx) {
     // eye height
     const eyeTarget = this.crouching ? 1.08 : 1.62; this.eyeCur = damp(this.eyeCur, eyeTarget, 14, dt);
     // head bob

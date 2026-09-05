@@ -19,7 +19,9 @@
     "test:combat-edges": "node tools/verify-combat-edges.mjs",
     "test:motorcycles": "node --env-file=.env.local tools/verify-motorcycles.mjs",
     "test:lobby-reset": "node --env-file=.env.local tools/verify-lobby-reset.mjs",
-    "test:skyline": "node --env-file=.env.expansiontest.local tools/verify-skyline.mjs"
+    "test:skyline": "node --env-file=.env.expansiontest.local tools/verify-skyline.mjs",
+    "test:visual-round": "node tools/verify-visual-round.mjs",
+    "test:zipline": "node --env-file=.env.expansiontest.local tools/verify-zipline-online.mjs"
   },
   "devDependencies": {
     "@ai-sdk/gateway": "^4.0.72",

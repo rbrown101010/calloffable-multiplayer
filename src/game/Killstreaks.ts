@@ -1,3 +1,4 @@
+import { PhysicalModels } from './PhysicalModels';
 import * as THREE from 'three';
 import type { Game } from './Game';
 import { G } from './Physics';
@@ -47,7 +48,7 @@ export class Killstreaks {
   }
   authorize(id:string,data:any){
     const e=this.entity(id),r=this.state.rewards[id],now=Date.now();
-    if(!this.authority||!e?.alive||!r||this.g.match.over||this.g.countdown>0||this.g.vehicles.list.some(v=>v.driver===id))return false;
+    if(!this.authority||!e?.alive||!r||this.g.match.over||this.g.countdown>0||this.g.ziplines?.rides.has(id)||this.g.vehicles.list.some(v=>v.driver===id))return false;
     const reward=data.reward as Reward;
     if(reward==='chopper'){
       if(!r.chopper||this.state.copters.some(c=>c.id===id)||this.state.copters.length>=2)return false;
@@ -156,8 +157,8 @@ export class Killstreaks {
   }
   private updateModels(now:number){
     const ids=new Set([...this.state.copters.map(c=>c.id),...this.state.sky.map(s=>s.id)]);for(const [id,m]of this.models)if(!ids.has(id)){disposeCopter(m);this.models.delete(id);}
-    for(const c of this.state.copters){let model=this.models.get(c.id);if(!model){model=makeCopter();this.models.set(c.id,model);this.g.scene.add(model);}model.visible=true;this.position(c,now,model.position);model.rotation.y=c.yaw;model.getObjectByName('rotor')!.rotation.y=now*.035;}
-    for(const s of this.state.sky){let model=this.models.get(s.id);if(!model){model=s.kind==='escort'?makeCopter():makeJet(s.kind==='bomber');if(s.kind==='uav')model.scale.setScalar(.6);this.models.set(s.id,model);this.g.scene.add(model);}const t=(now-s.start)/1000;if(s.kind==='escort'||s.kind==='uav'){const a=t*.16;model.position.set(s.p[0]+Math.cos(a)*24,s.p[1],s.p[2]+Math.sin(a)*24);model.rotation.y=-a;const rotor=model.getObjectByName('rotor');if(rotor)rotor.rotation.y=now*.035;}else{const d=(t/12-.5)*this.g.map.bounds*2.6;model.position.set(s.p[0]+Math.sin(s.yaw)*d,s.p[1],s.p[2]+Math.cos(s.yaw)*d);model.rotation.y=s.yaw+Math.PI;}}
+    for(const c of this.state.copters){let model=this.models.get(c.id);if(!model){model=makeCopter();this.models.set(c.id,model);this.g.scene.add(model);}model.visible=true;this.position(c,now,model.position);model.rotation.y=c.yaw;model.getObjectByName('rotor')!.rotation.y=now*.035;model.getObjectByName('tail-rotor')!.rotation.x=now*.055;}
+    for(const s of this.state.sky){let model=this.models.get(s.id);if(!model){model=s.kind==='escort'?makeCopter():makeJet(s.kind==='bomber');if(s.kind==='uav')model.scale.setScalar(.6);this.models.set(s.id,model);this.g.scene.add(model);}const t=(now-s.start)/1000;if(s.kind==='escort'||s.kind==='uav'){const a=t*.16;model.position.set(s.p[0]+Math.cos(a)*24,s.p[1],s.p[2]+Math.sin(a)*24);model.rotation.y=-a;const rotor=model.getObjectByName('rotor');if(rotor)rotor.rotation.y=now*.035;const tail=model.getObjectByName('tail-rotor');if(tail)tail.rotation.x=now*.055;}else{const d=(t/12-.5)*this.g.map.bounds*2.6;model.position.set(s.p[0]+Math.sin(s.yaw)*d,s.p[1],s.p[2]+Math.cos(s.yaw)*d);model.rotation.y=s.yaw+Math.PI;}}
   }
   beforeRender(){
     if(!this.controlling||this.g.state!=='playing')return null;
@@ -168,14 +169,23 @@ export class Killstreaks {
   reset(){this.state={rewards:{},copters:[],sky:[]};this.strikes=[];this.lastFire.clear();this.targeting=false;this.activeId='';for(const m of this.models.values())disposeCopter(m);this.models.clear();el('chopper-view').classList.add('hidden');document.body.classList.remove('gunning');}
 }
 function validVector(v:any):v is number[]{return Array.isArray(v)&&v.length===3&&v.every(Number.isFinite);}
-function makeCopter(){
-  const group=new THREE.Group(),body=new THREE.MeshStandardMaterial({color:0x29312b,roughness:.65,metalness:.55}),glass=new THREE.MeshStandardMaterial({color:0x172c37,roughness:.2,metalness:.8});
-  const box=(x:number,y:number,z:number,px:number,py:number,pz:number,mat=body)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(x,y,z),mat);m.position.set(px,py,pz);group.add(m);return m;};
-  const hull=new THREE.Mesh(new THREE.SphereGeometry(1,16,10),body);hull.scale.set(1.1,1.1,3);group.add(hull);box(1.55,.8,1.7,0,.3,-1.8,glass);box(.3,.4,5,0,.3,4.5);box(.15,1.8,1,0,1.1,6.5);box(4,.12,.8,0,.2,4.8);
-  box(.15,.9,.15,0,1.5,0);const rotor=box(12,.06,.16,0,2,0);rotor.name='rotor';const cross=new THREE.Mesh(new THREE.BoxGeometry(.16,.06,12),body);rotor.add(cross);
-  for(const x of[-1.2,1.2]){box(.1,.7,.1,x,-1,1);box(.1,.7,.1,x,-1,-1);box(.15,.15,4.5,x,-1.4,0);}box(.2,.2,1.6,0,-.8,-2.8);group.name='CHOPPER GUNNER';return group;
+function makeCopter(){const model=PhysicalModels.clone('helicopter');model.name='CHOPPER GUNNER';return model;}
+
+function disposeCopter(model:THREE.Group){model.removeFromParent();if(model.userData.sharedAsset)return;const mats=new Set<THREE.Material>();model.traverse(o=>{const m=o as THREE.Mesh;if(!m.isMesh)return;m.geometry.dispose();for(const mat of Array.isArray(m.material)?m.material:[m.material])mats.add(mat);});for(const m of mats)m.dispose();}
+
+/** Swept surfaces and a tapered fuselage keep aircraft readable even at long range. */
+function makeJet(bomber:boolean){
+ const g=new THREE.Group(),mat=new THREE.MeshStandardMaterial({color:bomber?0x303b3b:0x737e77,metalness:.55,roughness:.62}),dark=new THREE.MeshStandardMaterial({color:0x172025,metalness:.65,roughness:.35});
+ const surface=(points:number[][],thickness:number,material=mat)=>{const shape=new THREE.Shape();points.forEach(([x,z],i)=>i?shape.lineTo(x,z):shape.moveTo(x,z));shape.closePath();const geo=new THREE.ExtrudeGeometry(shape,{depth:thickness,bevelEnabled:true,bevelSize:.035,bevelThickness:.035,bevelSegments:1,steps:1}).rotateX(Math.PI/2);const mesh=new THREE.Mesh(geo,material);g.add(mesh);return mesh;};
+ if(bomber){surface([[0,-5],[-12,2],[-7,3],[-6,2],[-4,3],[-2,2],[0,3],[2,2],[4,3],[6,2],[7,3],[12,2]],.26);const cockpit=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),dark);cockpit.scale.set(.6,.32,1.2);cockpit.position.set(0,.22,-2.7);g.add(cockpit);}
+ else{
+   const points=[new THREE.Vector2(0,-5.5),new THREE.Vector2(.28,-3.6),new THREE.Vector2(.65,-1.3),new THREE.Vector2(.62,1.8),new THREE.Vector2(.35,4.4)];const hull=new THREE.Mesh(new THREE.LatheGeometry(points,12).rotateX(Math.PI/2),mat);hull.scale.y=.7;g.add(hull);
+   surface([[0,-1.7],[-6,1.9],[-5.8,2.7],[-.5,1.5],[.5,1.5],[5.8,2.7],[6,1.9]],.12);
+   surface([[0,2.1],[-2.5,4.3],[-2.3,4.8],[0,3.9],[2.3,4.8],[2.5,4.3]],.1);
+   const fin=surface([[0,0],[1.8,2.3],[.9,3.4],[0,3.8]],.1);fin.rotation.z=Math.PI/2;fin.position.set(.04,.05,.9);
+   const canopy=new THREE.Mesh(new THREE.SphereGeometry(1,16,10),dark);canopy.scale.set(.39,.45,1.25);canopy.position.set(0,.36,-2.1);g.add(canopy);
+   const nozzle=new THREE.Mesh(new THREE.CylinderGeometry(.37,.32,.7,12,1,true).rotateX(Math.PI/2),dark);nozzle.position.z=4.2;g.add(nozzle);
+   for(const x of[-3,3]){const pod=new THREE.Mesh(new THREE.CapsuleGeometry(.13,1.8,3,8).rotateX(Math.PI/2),mat);pod.position.set(x,-.3,1.25);g.add(pod);}
+ }
+ g.name=bomber?'STRATEGIC BOMBER':'STRIKE AIRCRAFT';return g;
 }
-
-function disposeCopter(model:THREE.Group){model.removeFromParent();const mats=new Set<THREE.Material>();model.traverse(o=>{const m=o as THREE.Mesh;if(!m.isMesh)return;m.geometry.dispose();for(const mat of Array.isArray(m.material)?m.material:[m.material])mats.add(mat);});for(const m of mats)m.dispose();}
-
-function makeJet(bomber:boolean){const g=new THREE.Group(),mat=new THREE.MeshStandardMaterial({color:bomber?0x222a30:0x849497,metalness:.6,roughness:.5});const body=new THREE.Mesh(new THREE.ConeGeometry(.8,9,8).rotateX(-Math.PI/2),mat);g.add(body);const wing=new THREE.Mesh(new THREE.BoxGeometry(bomber?20:12,.15,3),mat);wing.rotation.y=.12;g.add(wing);const tail=new THREE.Mesh(new THREE.BoxGeometry(4,.12,1.5),mat);tail.position.z=3;g.add(tail);const fin=new THREE.Mesh(new THREE.BoxGeometry(.1,1.8,1.5),mat);fin.position.set(0,.8,3);g.add(fin);return g;}

@@ -1,3 +1,4 @@
+import { createWeaponOptic, opticMountHeight } from './PhysicalModels';
 import {buildArmoryWeapon} from './ArmoryModels';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -18,7 +19,6 @@ export const FRAG_RELEASE=.24,FRAG_RECOVER=.72;
 // ------------------------------------------------------------- model loading
 const gltfLoader = new GLTFLoader(); gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 const modelCache = new Map<string, Promise<THREE.Object3D>>();
-const spasSteel=new THREE.MeshStandardMaterial({color:0x1b1b1d,roughness:.42,metalness:.8}),spasPolymer=new THREE.MeshStandardMaterial({color:0x141414,roughness:.75,metalness:.15});
 const loadedModels = new Map<string, THREE.Object3D>();
 export function loadWeaponModel(def: WeaponDef): Promise<THREE.Object3D> {
   const url = def.model.url;
@@ -34,13 +34,7 @@ export function loadWeaponModel(def: WeaponDef): Promise<THREE.Object3D> {
 export function cloneLoadedWeapon(def:WeaponDef){const model=loadedModels.get(def.model.url);return model?cloneWeaponModel(def,model):null;}
 function cloneWeaponModel(def: WeaponDef, m: THREE.Object3D) {
     const c = skClone(m);
-    if (def.id === 'spas12') {
-      // the low-poly SPAS-12 ships without textures: give it a proper blued-steel / polymer look
-      const steel=spasSteel;
-      const polymer=spasPolymer;
-      let i = 0; c.traverse((o: any) => { if (o.isMesh) { o.material = (i++ % 3 === 0) ? polymer : steel; } });
-    }
-    c.traverse((o: any) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach((mt: any) => { if (mt && 'envMapIntensity' in mt) mt.envMapIntensity = 1.0; }); } });
+    c.traverse((o: any) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach((mt: any) => { if (mt && 'envMapIntensity' in mt) {mt.envMapIntensity=def.id==='m14'?.35:1;if(def.id==='m14'){mt.color.set(0x555d55);mt.metalness=.45;mt.roughness=.7;}} }); } });
     return c;
 }
 /** Shift a parent-less model so its bounding box center sits on its parent origin. */
@@ -73,13 +67,7 @@ export class ViewModel {
 
   constructor(camera: THREE.Camera) {
     camera.add(this.root); this.root.add(this.pivot); this.pivot.add(this.holder); this.holder.add(this.modelRoot); this.holder.add(this.muzzle); this.holder.add(this.ejectPt);
-    this.holder.add(this.optic);const opticMat=new THREE.MeshStandardMaterial({color:0x202623,roughness:.55,metalness:.6});
-    const rim=new THREE.Mesh(new THREE.TorusGeometry(.045,.005,6,24),opticMat);this.optic.add(rim);
-    const mount=new THREE.Mesh(new THREE.BoxGeometry(.055,.04,.07),opticMat);mount.position.y=-.058;this.optic.add(mount);
-    const lens=new THREE.Mesh(new THREE.CircleGeometry(.042,24),new THREE.MeshBasicMaterial({color:0x97c9bc,transparent:true,opacity:.045,depthWrite:false}));this.optic.add(lens);
-    for(const x of[-.049,.049]){const edge=new THREE.Mesh(new THREE.BoxGeometry(.008,.079,.017),opticMat);edge.position.set(x,0,0);this.holo.add(edge);}
-    for(const y of[-.043,.043]){const edge=new THREE.Mesh(new THREE.BoxGeometry(.1,.008,.017),opticMat);edge.position.set(0,y,0);this.holo.add(edge);}
-    const hood=new THREE.Mesh(new THREE.BoxGeometry(.112,.012,.065),opticMat);hood.position.y=.052;this.holo.add(hood);this.holder.add(this.holo);
+    this.optic.add(createWeaponOptic());this.holo.add(createWeaponOptic());this.holder.add(this.optic,this.holo);
     this.root.add(this.reticle);this.reticle.position.set(0,0,-.35);this.reticle.visible=false;this.root.add(this.holoReticle);this.holoReticle.position.set(0,0,-.35);this.holoReticle.visible=false;
     this.root.add(this.fragRoot);this.fragRoot.add(this.fragHand);this.fragRoot.visible=false;
     const sleeve=new THREE.Mesh(new THREE.CapsuleGeometry(.055,.34,4,8),new THREE.MeshStandardMaterial({color:0x59624d,roughness:.95}));sleeve.rotation.x=Math.PI/2;sleeve.position.z=.22;this.fragHand.add(sleeve);
@@ -100,7 +88,7 @@ export class ViewModel {
     model.traverse((o) => o.layers.set(VIEW_LAYER));
     // auto-center the geometry on the holder origin (Sketchfab pivots are arbitrary). Computed before parenting so the box is in holder space.
     centerModel(model, this.bboxMin, this.bboxMax);
-    this.modelRoot.add(model);this.optic.visible=def.optic==='red-dot';this.holo.visible=def.optic==='holographic';this.optic.position.set(0,this.bboxMax.y+.06,0);this.holo.position.copy(this.optic.position);this.reticle.visible=false;
+    this.modelRoot.add(model);this.optic.visible=def.optic==='red-dot';this.holo.visible=def.optic==='holographic';this.optic.position.set(0,opticMountHeight(def.id,this.bboxMax.y),0);this.holo.position.copy(this.optic.position);this.reticle.visible=false;
     const mags: THREE.Object3D[] = []; model.traverse((o) => { if (/mag(azine)?/i.test(o.name) && !/base|fde/i.test(o.name)) mags.push(o); });
     this.magNode = mags[0] ?? null; if (this.magNode) this.magRest.copy(this.magNode.position);
     this.muzzle.position.set(M.muzzle[0], M.muzzle[1], this.bboxMin.z + 0.01); this.ejectPt.position.set(M.eject[0], M.eject[1], M.eject[2]);

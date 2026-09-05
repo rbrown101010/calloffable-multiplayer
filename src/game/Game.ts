@@ -1,3 +1,5 @@
+import { PhysicalModels } from './PhysicalModels';
+import { Ziplines } from './Ziplines';
 import { Elevator } from './Elevator';
 import { Ordnance } from './Ordnance';
 import { Killstreaks } from './Killstreaks';
@@ -33,7 +35,7 @@ const MATCH_TIME = 600;
 const weaponPreview=(id:string)=>`<img class="weapon-preview" src="/images/weapons/${id}.png" alt="${WEAPONS[id].name}" width="640" height="210"/>`;
 
 export type MapId = 'sable' | 'rust';
-type Arena = { map:RustMap;vehicles:Vehicles;items:FieldItems;elevator:Elevator;colliders:number[] };
+type Arena = { map:RustMap;vehicles:Vehicles;items:FieldItems;elevator:Elevator;ziplines:Ziplines;colliders:number[] };
 type State = 'loading' | 'menu' | 'playing' | 'paused' | 'ended' | 'killcam';
 interface SnapEnt { x: number; y: number; z: number; feetY: number; yaw: number; aimYaw: number; aimPitch: number; alive: boolean; speed: number; }
 interface Snap { t: number; p: SnapEnt & { eyeY: number; pitch: number; ads: number }; b: SnapEnt[]; }
@@ -43,7 +45,7 @@ interface Stats { name: string; kills: number; deaths: number; score: number; st
 export class Game {
   renderer!: THREE.WebGLRenderer; scene = new THREE.Scene(); camera!: THREE.PerspectiveCamera; weaponCam!: THREE.PerspectiveCamera;
   physics!: Physics; input!: Input; audio!: AudioManager; map!: RustMap; player!: Player; vm!: ViewModel; gunplay!: Gunplay; bullets!: Bullets; effects!: Effects; bots!: BotManager; hud!: HUD; grenades!: Grenades; post!: PostFX; sun!: THREE.DirectionalLight;
-  elevator!:Elevator;vehicles!: Vehicles; fieldItems!: FieldItems;
+  ziplines!:Ziplines;elevator!:Elevator;vehicles!: Vehicles; fieldItems!: FieldItems;
   online!: Online; mapName = 'SABLE REACH';
   ordnance!:Ordnance;deathReplay!:DeathReplay;killstreaks!:Killstreaks;
   equipment:Equipment=validateEquipment(null);
@@ -81,7 +83,7 @@ export class Game {
     this.mapName = this.params.get('map') === 'rust' ? 'RUST' : 'SABLE REACH';
     await this.setupSky();
     setLoad(0.16, 'LOADING SCANNED SCENERY');
-    if(this.mapName!=='RUST')await SableMap.preload();
+    await Promise.all([PhysicalModels.preload(),this.mapName!=='RUST'?SableMap.preload():Promise.resolve()]);
     setLoad(0.2, 'BUILDING ' + this.mapName);
     this.map = this.mapName === 'RUST' ? new RustMap(this.physics) : new SableMap(this.physics); this.scene.add(this.map.build());
     this.effects = new Effects(this.scene, this.physics, this.audio);
@@ -95,7 +97,7 @@ export class Game {
     this.grenades.onExplode = (pos, owner) => { const d = pos.distanceTo(this.player.eyePos); this.audio.explosion(pos, d); this.player.addShake(clamp(1.6 - d / 10, 0, 1.3)); if (d < 12) this.hud.flash(clamp(1 - d / 12, 0, 0.8)); this.bots.alert(pos, 60, owner, this.time); this.online?.explosion(pos); };
     setLoad(0.35, 'LOADING WEAPONS');
     let done = 0; const defs = Object.values(WEAPONS);
-    await Promise.all(defs.map((d) => loadWeaponModel(d).then(() => { done++; setLoad(0.35 + 0.2 * done / defs.length, `LOADING WEAPONS ${done}/${defs.length}`); })));
+    const warmWeapons=await Promise.all(defs.map((d) => loadWeaponModel(d).then(model => { done++; setLoad(0.35 + 0.2 * done / defs.length, `LOADING WEAPONS ${done}/${defs.length}`);return model; })));
     setLoad(0.55, 'DEPLOYING OPERATORS');
     this.bots = new BotManager(this.physics, this.scene, this.map, this.bullets, this.effects, this.audio, this.player, {
       onKill: (k, v, w, hs) => this.onKill(k, v, w, hs),
@@ -128,9 +130,9 @@ export class Game {
     let manifest: Record<string, string> = { ...SOUNDS };
     try { const extra: string[] = await (await fetch('/sounds/manifest.json')).json(); for (const n of extra) manifest[n] = `/sounds/${n}.mp3`; } catch {}
     await this.audio.load(manifest, (d, t) => setLoad(0.7 + 0.2 * d / t, `LOADING AUDIO ${d}/${t}`));
-    this.vehicles = new Vehicles(this); this.fieldItems = new FieldItems(this);this.elevator=new Elevator(this);
+    this.vehicles = new Vehicles(this); this.fieldItems = new FieldItems(this);this.elevator=new Elevator(this);this.ziplines=new Ziplines(this);
     const colliders:number[]=[];this.physics.world.forEachCollider(c=>{if((c.collisionGroups()>>>16)&(G.WORLD|G.VEHICLE))colliders.push(c.handle);});
-    this.arenas.set(this.mapId,{map:this.map,vehicles:this.vehicles,items:this.fieldItems,elevator:this.elevator,colliders});
+    this.arenas.set(this.mapId,{map:this.map,vehicles:this.vehicles,items:this.fieldItems,elevator:this.elevator,ziplines:this.ziplines,colliders});
     setLoad(0.92, 'COMPOSITING');
     this.post = setupPost(this.renderer, this.scene, this.camera, this.weaponCam, { ao: !this.params.has('noao') });
     this.renderMinimapBase();
@@ -139,6 +141,13 @@ export class Game {
     document.querySelectorAll('[data-map-name]').forEach(e => e.textContent=this.mapName);
     el<HTMLSelectElement>('map-select').value=this.params.get('map')==='rust'?'rust':'sable';
     el('map-select').addEventListener('change',()=>{const url=new URL(location.href);url.searchParams.set('map',el<HTMLSelectElement>('map-select').value);location.href=url.toString();});
+    setLoad(.95,'PREPARING WEAPON MATERIALS');
+    const warmup=new THREE.Group();warmup.add(...warmWeapons,PhysicalModels.clone('optic'),PhysicalModels.clone('helicopter'));
+    // Upload texture data and compile new weapon programs during loading, before a firefight.
+    const textures=new Set<THREE.Texture>();warmup.traverse(o=>{if(o instanceof THREE.Mesh)for(const material of Array.isArray(o.material)?o.material:[o.material])for(const value of Object.values(material))if(value instanceof THREE.Texture&&value.image)textures.add(value);});
+    for(const texture of textures)this.renderer.initTexture(texture);
+    await this.renderer.compileAsync(warmup,this.weaponCam,this.scene);warmup.clear();
+    await this.renderer.compileAsync(this.scene,this.camera);
     setLoad(1, 'READY');
     await new Promise((r) => setTimeout(r, 250));
     el('loading').classList.add('hidden');
@@ -185,7 +194,7 @@ export class Game {
   /** Swap scenery and collision together without replacing players, the room, or voice connections. */
   async loadMap(id:MapId) {
     if(id===this.mapId)return;
-    this.deathReplay?.reset();this.killstreaks?.reset();
+    this.ziplines?.reset();this.deathReplay?.reset();this.killstreaks?.reset();
     this.mapChanging=true;this.input.reset();this.input.unlock();this.vehicles.reset();
     try {
       if(id==='sable'&&!this.arenas.has(id))await SableMap.preload();
@@ -199,12 +208,12 @@ export class Game {
       if(!arena){
         const before=new Set<number>();this.physics.world.forEachCollider(c=>before.add(c.handle));
         this.map=id==='rust'?new RustMap(this.physics):new SableMap(this.physics);this.scene.add(this.map.build());
-        this.vehicles=new Vehicles(this);this.fieldItems=new FieldItems(this);this.elevator=new Elevator(this);
+        this.vehicles=new Vehicles(this);this.fieldItems=new FieldItems(this);this.elevator=new Elevator(this);this.ziplines=new Ziplines(this);
         const colliders:number[]=[];this.physics.world.forEachCollider(c=>{if(!before.has(c.handle))colliders.push(c.handle);});
-        arena={map:this.map,vehicles:this.vehicles,items:this.fieldItems,elevator:this.elevator,colliders};this.arenas.set(id,arena);
+        arena={map:this.map,vehicles:this.vehicles,items:this.fieldItems,elevator:this.elevator,ziplines:this.ziplines,colliders};this.arenas.set(id,arena);
       }
-      this.map=arena.map;this.vehicles=arena.vehicles;this.fieldItems=arena.items;this.elevator=arena.elevator;this.setArenaActive(arena,true);
-      this.vehicles.reset();this.fieldItems.reset();this.elevator.reset();this.player.setLadders(this.map.ladders);this.bots.setMap(this.map);
+      this.map=arena.map;this.vehicles=arena.vehicles;this.fieldItems=arena.items;this.elevator=arena.elevator;this.ziplines=arena.ziplines;this.setArenaActive(arena,true);
+      this.vehicles.reset();this.fieldItems.reset();this.elevator.reset();this.ziplines.reset();this.player.setLadders(this.map.ladders);this.bots.setMap(this.map);
       this.player.teleport(this.map.spawns[0].pos);this.renderMinimapBase();this.playerPuppet?.setVisible(true);
       document.querySelectorAll('[data-map-name]').forEach(e=>e.textContent=this.mapName);
       el<HTMLSelectElement>('map-select').value=id;this.params.set('map',id);
@@ -213,7 +222,7 @@ export class Game {
     } finally {this.mapChanging=false;}
   }
   private setArenaActive(arena:Arena,active:boolean) {
-    arena.map.group.visible=active;arena.elevator.group.visible=active;
+    arena.map.group.visible=active;arena.elevator.group.visible=active;arena.ziplines.group.visible=active;
     for(const handle of arena.colliders)this.physics.world.getCollider(handle)?.setEnabled(active);
     for(const v of arena.vehicles.list)v.model.visible=active;
     for(const i of arena.items.list)i.model.visible=active;
@@ -327,7 +336,7 @@ export class Game {
   private saveSettings() { try { localStorage.setItem('rust_settings', JSON.stringify(this.settings)); } catch {} }
 
   showMenu() {
-    this.deathReplay?.reset();this.killstreaks?.reset();
+    this.ziplines?.reset();this.deathReplay?.reset();this.killstreaks?.reset();
     this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
     el('class-picker').classList.add('hidden');this.input.reset();this.audio.setWind(0);this.ordnance?.clear();this.bullets.clear();this.grenades.clear();
     this.state = 'menu'; el('menu').classList.remove('hidden'); el('pause').classList.add('hidden'); el('end').classList.add('hidden'); this.hud.hide();
@@ -338,11 +347,11 @@ export class Game {
   // ------------------------------------------------------------------ match flow
   async startMatch() {
     if (this.state === 'playing') return;
-    this.deathReplay?.reset();this.killstreaks?.reset();
+    this.ziplines?.reset();this.deathReplay?.reset();this.killstreaks?.reset();
     if(!this.nolock)this.input.lock();
     this.audio.unlock(); this.audio.startWind(); this.audio.setWind(this.settings.wind);
     el('menu').classList.add('hidden'); el('end').classList.add('hidden'); el('pause').classList.add('hidden');
-    this.ordnance?.clear();this.bullets.clear();this.grenades.clear();this.vehicles.reset();this.fieldItems.reset();this.elevator.reset();
+    this.ordnance?.clear();this.bullets.clear();this.grenades.clear();this.vehicles.reset();this.fieldItems.reset();this.elevator.reset();this.ziplines.reset();
     this.match.timeLeft = MATCH_TIME; this.match.over = false; this.bestStreak = 0;
     const P = this.player; P.kills = 0; P.deaths = 0; P.score = 0; P.streak = 0;
     for (const b of this.bots.bots) { b.kills = 0; b.deaths = 0; b.score = 0; b.streak = 0; b.respawnT = 0; }
@@ -573,15 +582,17 @@ export class Game {
       if (n < this.countdownShown) { this.countdownShown = n; if (n >= 1) { this.hud.streak(String(n)); this.audio.countdownBeep(false); } }
       if (this.countdown <= 0) { this.hud.streak('GO'); this.audio.countdownBeep(true); this.bots.frozen = false; this.voice.announce('ffa', 3, 0); }
     }
-    this.elevator.update(dt,P.alive&&this.countdown<=0&&this.state==='playing'&&el('lobby').classList.contains('hidden')&&!this.killstreaks.controlling&&!P.mounted);
+    this.ziplines.update(P.alive&&!this.match.over&&this.countdown<=0&&this.state==='playing'&&el('lobby').classList.contains('hidden')&&!this.elevator.open&&!this.killstreaks.controlling);
+    this.elevator.update(dt,!this.ziplines.active&&P.alive&&this.countdown<=0&&this.state==='playing'&&el('lobby').classList.contains('hidden')&&!this.killstreaks.controlling&&!P.mounted);
     const canControl = !this.elevator.open && P.alive && !this.match.over && this.countdown <= 0 && this.state==='playing' && el('lobby').classList.contains('hidden');
-    this.vehicles.update(dt,canControl&&!this.killstreaks.controlling);
-    this.killstreaks.update(dt,canControl&&!P.mounted);
-    const onFoot=canControl&&!P.mounted&&!this.killstreaks.controlling;
+    this.vehicles.update(dt,canControl&&!this.ziplines.active&&!this.killstreaks.controlling);
+    this.killstreaks.update(dt,canControl&&!this.ziplines.active&&!P.mounted);
+    const onFoot=canControl&&!this.ziplines.active&&!P.mounted&&!this.killstreaks.controlling;
     gp.updateAim(onFoot);
     if(!P.mounted)P.update(dt, { canControl:onFoot, canLook: !this.elevator.open && !this.killstreaks.controlling && P.alive && !this.match.over && this.state==='playing' && el('lobby').classList.contains('hidden') && (this.input.locked||this.input.forceLocked), speedMul: WEAPONS[P.equipment.primary].speedMul, adsHeld: gp.adsHeld, adsFov: def?.adsFov ?? 60, adsTime: def?.adsTime ?? 0.25, firing: gp.firing });
-    if(P.mounted){P.ads=0;gp.adsLatched=false;}
-    gp.update(dt, canControl&&!this.killstreaks.controlling);
+    this.ziplines.carry();
+    if(P.mounted||this.ziplines.active){P.ads=0;gp.adsLatched=false;}
+    gp.update(dt, canControl&&!this.ziplines.active&&!this.killstreaks.controlling);
     this.fieldItems.update(dt,onFoot);
     this.bullets.listener.copy(P.eyePos); this.bullets.listenerOwner = P; this.bullets.update(dt);
     if(!this.online?.connected||this.online.isHost)this.bots.update(dt, this.time);
@@ -591,7 +602,7 @@ export class Game {
     this.effects.update(dt, P.eyePos, this.time);
     this.audio.updateListener(this.camera); this.audio.update(dt);
     // player body (shadow) + killcam recorder
-    if (this.playerPuppet) this.playerPuppet.update(dt, { pos: P.pos, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, speed: P.speed, alive: P.alive, deathT: P.deathT,deathStyle:P.deathStyle,deathDir:P.deathDir, crouch: P.crouching, riding:P.mounted,motorcycle:this.vehicles.current?.kind==='motorcycle' });
+    if (this.playerPuppet) this.playerPuppet.update(dt, { pos: P.pos, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, speed: P.speed, alive: P.alive, deathT: P.deathT,deathStyle:P.deathStyle,deathDir:P.deathDir, crouch: P.crouching, ziplining:this.ziplines.active,riding:P.mounted,motorcycle:this.vehicles.current?.kind==='motorcycle' });
     this.snapTimer+=dt;
     if (!this.online?.connected && this.countdown <= 0 && this.snapTimer>=.05) {
       this.snapTimer=0;
@@ -627,7 +638,7 @@ export class Game {
     this.minimapTimer+=dt;
     if(this.minimapTimer>.1){this.minimapTimer=0;this.hud.drawMinimap(P.pos, P.yaw, (this.online?.connected?[...this.bots.bots,...this.online.remotes.values()]:this.bots.bots).map((b) => ({ pos: b.pos, alive: b.alive, visible: this.time - (this.botLastShot.get(b) ?? -9) < 2.2 || b.pos.distanceTo(P.pos) < 5 })), this.time, this.time < this.uavUntil);}
     el('sector-label').textContent=this.map instanceof SableMap?this.map.sector(P.pos.x,P.pos.z):'RUST';
-    el('stance-label').textContent=P.mounted?'DRIVING':P.sliding?'SLIDING':P.crouching?'CROUCHED':P.sprinting?'SPRINTING':'STANDING';
+    el('stance-label').textContent=this.ziplines.active?'ZIP LINE':P.mounted?'DRIVING':P.sliding?'SLIDING':P.crouching?'CROUCHED':P.sprinting?'SPRINTING':'STANDING';
     el('stamina-fill').style.width=Math.round(P.stamina*100)+'%';
     this.audio.setLowHealth(P.alive && P.health < 38 ? 1 - P.health / 38 : 0);
     this.hud.update(dt, P.alive ? P.health : 100);

@@ -273,3 +273,5 @@ button,select,input{font:inherit}button:focus-visible,select:focus-visible,input
 
 body.death-aftermath #end{visibility:hidden}body.death-aftermath #weapon,body.death-aftermath #crosshair{visibility:hidden}
 #streaks .sk{min-width:88px}#streaks{gap:5px}
+
+#zipline-hint{position:fixed;bottom:23%;left:50%;transform:translateX(-50%);z-index:22;padding:10px 18px;background:rgba(9,16,15,.88);border:1px solid #b3a174;color:#eddfbc;font:600 15px 'Rajdhani',sans-serif;letter-spacing:2px;pointer-events:none;white-space:nowrap}

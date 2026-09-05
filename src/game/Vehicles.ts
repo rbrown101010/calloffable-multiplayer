@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { PhysicalModels } from './PhysicalModels';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { G, cg } from './Physics';
 import { clamp, damp, el, wrapAngle } from './util';
@@ -12,14 +12,6 @@ export const vehicleName=(v:ATV)=>v.kind==='motorcycle'?'RAVEN MOTORCYCLE':VEHIC
 const IMPACT_MIN_SPEED=4,IMPACT_LETHAL_SPEED=12.5;
 export type ATV = { id:number;kind:'atv'|'motorcycle';maxSpeed:number;boostSpeed:number; pos:THREE.Vector3; spawn:THREE.Vector3; spawnYaw:number; yaw:number; pitch:number; roll:number; speed:number; vy:number; driver:string; grounded:boolean; model:THREE.Group; wheels:THREE.Group[]; front:THREE.Group[]; body:RAPIER.RigidBody; collider:RAPIER.Collider; target?:VehicleState; lastPacket:number; abandoned:number; steer:number; boost:number; boostLocked:boolean };
 const DOWN=new THREE.Vector3(0,-1,0),UP=new THREE.Vector3(0,1,0);
-const paint=new THREE.MeshStandardMaterial({color:0x78836b,metalness:.48,roughness:.5});
-const metal=new THREE.MeshStandardMaterial({color:0x242c2d,metalness:.72,roughness:.4});
-const rubber=new THREE.MeshStandardMaterial({color:0x151a19,roughness:.97});
-const amber=new THREE.MeshStandardMaterial({color:0xefb34e,metalness:.4,roughness:.3});
-const lamp=new THREE.MeshStandardMaterial({color:0xffefcb,emissive:0xffd17b,emissiveIntensity:2.4});
-const tail=new THREE.MeshStandardMaterial({color:0x9d3127,emissive:0xff3020,emissiveIntensity:1.2});
-const box=new THREE.BoxGeometry(1,1,1), tire=new THREE.CylinderGeometry(.42,.42,.32,16).rotateZ(Math.PI/2), hub=new THREE.CylinderGeometry(.21,.21,.335,10).rotateZ(Math.PI/2);
-
 /** Responsive local driving; the session host grants seats and validates/relays driver transforms. */
 export class Vehicles {
   list:ATV[]=[];
@@ -35,36 +27,11 @@ export class Vehicles {
   get current(){return this.list.find(v=>v.driver===this.self);}
   get mounted(){return !!this.current;}
   private create(x:number,z:number,yaw:number,kind:'atv'|'motorcycle'='atv'){
-    const model=new THREE.Group(),wheels:THREE.Group[]=[],front:THREE.Group[]=[];
-    const part=(mat:THREE.Material,s:number[],p:number[],rot:number[]=[])=>{const m=new THREE.Mesh(box,mat);m.scale.set(...s as [number,number,number]);m.position.set(...p as [number,number,number]);if(rot.length)m.rotation.set(...rot as [number,number,number]);m.castShadow=true;m.receiveShadow=true;model.add(m);return m;};
-    if(kind==='atv'){
-    part(metal,[1.12,.22,2.05],[0,-.04,.04]);part(paint,[.72,.42,.78],[0,.19,-.56],[.12,0,0]);
-    part(rubber,[.59,.16,1.04],[0,.36,.37]);part(metal,[.66,.18,.58],[0,.14,.66]);
-    for(const side of [-1,1]){
-      part(paint,[.42,.13,.82],[side*.58,.12,-.84],[0,0,side*-.13]);part(paint,[.4,.12,.82],[side*.58,.17,.9],[0,0,side*.12]);
-      part(metal,[.18,.07,1],[side*.66,-.04,.22]);part(amber,[.19,.065,.57],[side*.68,0,.25]);
-      part(lamp,[.23,.12,.06],[side*.27,.26,-1.01]);part(tail,[.17,.08,.06],[side*.38,.24,1.17]);
-      part(metal,[.08,.14,2.38],[side*.44,-.02,.05]);
-    }
-    part(metal,[1.36,.1,.1],[0,-.04,-1.3]);part(metal,[1.3,.1,.1],[0,-.04,1.3]);
-    part(metal,[.09,.59,.09],[0,.496,-.347],[.6,0,0]);part(metal,[.91,.055,.055],[0,.74,-.18]);
-    for(const side of [-1,1])part(rubber,[.2,.075,.09],[side*.38,.74,-.18]);
-    part(metal,[.73,.05,.63],[0,.34,1.04]);
-    for(const xw of [-.72,.72])for(const zw of [-.87,.9]){
-      const pivot=new THREE.Group();pivot.position.set(xw,-.24,zw);model.add(pivot);if(zw<0)front.push(pivot);
-      const wheel=new THREE.Group();pivot.add(wheel);const t=new THREE.Mesh(tire,rubber),h=new THREE.Mesh(hub,metal);t.castShadow=h.castShadow=true;wheel.add(t,h);
-      for(let k=0;k<12;k++){const tread=new THREE.Mesh(box,rubber);const a=k/12*Math.PI*2;tread.scale.set(.34,.085,.12);tread.position.set(0,Math.cos(a)*.4,Math.sin(a)*.4);tread.rotation.x=a;wheel.add(tread);}
-      mergeParts(wheel);wheels.push(wheel);
-      part(metal,[1.35,.055,.055],[0,-.24,zw]);part(amber,[.065,.38,.065],[xw*.75,-.04,zw],[0,0,xw>0?-.25:.25]);
-    }
-    }else{
-      part(metal,[.25,.3,1.5],[0,.05,0]);part(paint,[.48,.4,.64],[0,.35,-.18],[.15,0,0]);part(rubber,[.38,.12,.83],[0,.51,.45]);
-      part(paint,[.38,.12,.8],[0,.26,-.9],[.12,0,0]);part(paint,[.32,.12,.7],[0,.4,.9],[-.2,0,0]);
-      part(metal,[.7,.07,.07],[0,.86,-.42]);for(const side of[-1,1]){part(rubber,[.19,.085,.1],[side*.29,.86,-.42]);part(metal,[.07,.72,.07],[side*.15,.22,-.79],[.22,0,0]);part(metal,[.07,.12,1],[side*.14,-.1,.25]);}
-      part(lamp,[.24,.18,.08],[0,.7,-.74]);part(tail,[.2,.09,.08],[0,.45,1.18]);part(metal,[.1,.1,.55],[.24,.08,.55]);
-      for(const z of[-.94,.96]){const pivot=new THREE.Group();pivot.position.set(0,-.22,z);model.add(pivot);if(z<0)front.push(pivot);const wheel=new THREE.Group();pivot.add(wheel);const t=new THREE.Mesh(tire,rubber),h=new THREE.Mesh(hub,metal);t.scale.x=.6;h.scale.x=.64;t.castShadow=h.castShadow=true;wheel.add(t,h);for(let k=0;k<8;k++){const spoke=new THREE.Mesh(box,metal);spoke.scale.set(.06,.055,.67);spoke.rotation.x=k*Math.PI/8;wheel.add(spoke);}mergeParts(wheel);wheels.push(wheel);}
-    }
-    mergeParts(model);model.name=kind==='motorcycle'?'RAVEN MOTORCYCLE':'KESTREL ATV';
+    const model=PhysicalModels.clone(kind),wheels:THREE.Group[]=[],front:THREE.Group[]=[];
+    // Authored wheel origins sit at the axles; steering and rolling use independent pivots.
+    model.traverse(o=>{if(!/^(wheel[0-9]*|front-wheel|rear-wheel)$/.test(o.name))return;wheels.push(o as THREE.Group);});
+    for(const wheel of wheels){const pivot=new THREE.Group();pivot.position.copy(wheel.position);wheel.parent!.add(pivot);wheel.position.set(0,0,0);pivot.add(wheel);if(pivot.position.z<0)front.push(pivot);}
+    model.name=kind==='motorcycle'?'RAVEN MOTORCYCLE':'KESTREL ATV';
     const y=this.g.map.groundHeight(x,z)+.7,pos=new THREE.Vector3(x,y,z),R=this.g.physics.R;
     const body=this.g.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(x,y,z));
     const collider=this.g.physics.world.createCollider(R.ColliderDesc.cuboid(kind==='motorcycle'?.3:.66,.24,1.14).setCollisionGroups(cg(G.VEHICLE)),body);
@@ -89,7 +56,7 @@ export class Vehicles {
   authorize(who:string,id:number,action:'enter'|'exit'){
     const v=this.list[id],e=who===this.self?this.g.player:this.g.online?.entity(who);if(!v||!e)return false;
     if(action==='enter'){
-      if(!e.alive||v.driver||this.list.some(v=>v.driver===who)||e.pos.distanceTo(v.pos)>4.2||Math.abs(v.speed)>3)return false;
+      if(!e.alive||this.g.ziplines?.rides.has(who)||v.driver||this.list.some(v=>v.driver===who)||e.pos.distanceTo(v.pos)>4.2||Math.abs(v.speed)>3)return false;
       v.driver=who;v.lastPacket=performance.now();v.abandoned=0;this.contacts.delete(v.id);return true;
     }
     if(v.driver!==who)return false;v.driver='';return true;
@@ -216,10 +183,4 @@ export class Vehicles {
   }
   private engineSound(v:ATV|undefined,enabled:boolean){if(!this.engine||!v)return;const e=this.engine,t=this.g.audio.ctx.currentTime,rpm=35+Math.abs(v.speed)*3.4+(this.g.input.down('KeyW')?12:0);e.osc.frequency.setTargetAtTime(rpm,t,.12);e.harmonic.frequency.setTargetAtTime(rpm*2.01,t,.12);e.filter.frequency.setTargetAtTime(250+Math.abs(v.speed)*18,t,.1);e.gain.gain.setTargetAtTime(enabled?.033+Math.abs(v.speed)*.0012:0,t,.1);}
   private hud(v?:ATV,hint=''){const text=v?`${Math.round(Math.abs(v.speed)*3.6)} KM/H · ${v.grounded?vehicleName(v):'AIRBORNE'}|${Math.round(v.boost*100)}`:hint;if(text===this.lastHud)return;this.lastHud=text;const node=el('vehicle-hud');node.classList.toggle('hidden',!text);node.innerHTML=v?`<div class="vehicle-name">${v.kind==='motorcycle'?'RAVEN <span>FAST ATTACK MOTORCYCLE</span>':'KESTREL <span>LIGHT RECON ATV</span>'}</div><div class="vehicle-speed">${Math.round(Math.abs(v.speed)*3.6)}<small>KM/H</small></div><div class="vehicle-boost"><i style="width:${v.boost*100}%"></i></div><div class="vehicle-keys">WASD DRIVE · CLICK / F FIRE FORWARD<br>1 / 2 WEAPONS · SPACE BRAKE · SHIFT BOOST · E EXIT</div>${!v.grounded?'<b class="airborne">AIRBORNE</b>':''}`:`<div class="vehicle-prompt">${hint}</div>`;}
-}
-
-function mergeParts(group:THREE.Group){
-  const buckets=new Map<THREE.Material,THREE.BufferGeometry[]>();
-  for(const child of [...group.children])if(child instanceof THREE.Mesh){child.updateMatrix();const geo=child.geometry.clone().applyMatrix4(child.matrix);const mat=child.material as THREE.Material;if(!buckets.has(mat))buckets.set(mat,[]);buckets.get(mat)!.push(geo);group.remove(child);}
-  for(const [mat,geos] of buckets){const merged=mergeGeometries(geos,false)!;for(const geo of geos)geo.dispose();const mesh=new THREE.Mesh(merged,mat);mesh.castShadow=mesh.receiveShadow=true;mesh.matrixAutoUpdate=false;group.add(mesh);}
 }

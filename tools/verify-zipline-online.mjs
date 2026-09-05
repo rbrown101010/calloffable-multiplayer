@@ -1,0 +1,21 @@
+import{chromium}from'playwright';import assert from'node:assert/strict';
+const base=process.env.TEST_URL||'http://127.0.0.1:5182';assert.equal(new URL(base).hostname,'127.0.0.1');assert(process.env.LOBBY_HOST_PIN);
+const browser=await chromium.launch({channel:'chrome',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding']});let a,b;const errors=[];const wait=(p,f,t=20000)=>p.waitForFunction(f,null,{timeout:t});
+async function boot(hash){const c=await browser.newContext({viewport:{width:1100,height:750}}),p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(base+'/?nolock&noao#'+hash);await wait(p,()=>window.__game?.state==='menu',90000);return p;}
+async function position(p,v){await p.evaluate(v=>{const g=window.__game;g.player.teleport(g.player.pos.clone().fromArray(v));g.player.yaw=0;g.player.pitch=0;g.input.reset();},v);await p.waitForTimeout(700);}
+try{
+ a=await boot('host');await a.locator('#callsign').fill('ZIP HOST');await a.locator('#invite-code').fill(process.env.LOBBY_HOST_PIN);await a.locator('#lobby-join').click();await wait(a,()=>window.__game.online.isHost);const invite=await a.evaluate(()=>window.__game.online.inviteKey);
+ b=await boot('invite='+invite);await b.locator('#callsign').fill('ZIP GUEST');await b.locator('#lobby-join').click();await Promise.all([a,b].map(p=>wait(p,()=>window.__game.online.remotes.size===1)));await b.locator('#lobby-ready').click();await a.locator('#lobby-bots').selectOption('0');await wait(a,()=>[...window.__game.online.peers.values()].some(p=>p.ready));await a.locator('#lobby-start').click();await Promise.all([a,b].map(p=>wait(p,()=>window.__game.state==='playing'&&window.__game.countdown<=0,60000)));
+ const id=await b.evaluate(()=>window.__game.online.id);
+ // The host rejects a boarding request sent from across the map.
+ await b.evaluate(()=>window.__game.online.ziplineAction(0,0,'enter'));await b.waitForTimeout(500);assert.equal(await a.evaluate(id=>window.__game.ziplines.rides.has(id),id),false);
+ for(const from of[0,1]){
+  const start=from?[82,5.68,-22]:[12,34.31,9],end=from?[12,34.275,9]:[82,5.64,-22];await position(b,start);await b.keyboard.press('e',{delay:100});await wait(b,()=>window.__game.ziplines.active);await wait(a,()=>window.__game.ziplines.rides.size===1);
+  const trace=await a.evaluate(id=>{const g=window.__game,r=g.ziplines.rides.get(id),e=g.online.entity(id),expected=g.ziplines.position(r);return{distance:e.pos.distanceTo(expected.add(g.player.pos.clone().set(0,.9,0))),visible:e.puppet.model.visible,gun:e.puppet.gunPivot.visible};},id);assert(trace.distance<1.2);assert(trace.visible);assert.equal(trace.gun,false);
+  assert.equal(await b.evaluate(()=>window.__game.vm.root.visible),false);await b.mouse.down({button:'right'});await b.waitForTimeout(120);assert.equal(await b.evaluate(()=>window.__game.player.ads),0);await b.mouse.up({button:'right'});
+  await wait(b,()=>!window.__game.ziplines.active,12000);const landed=await b.evaluate(()=>window.__game.player.pos.toArray());assert(Math.hypot(landed[0]-end[0],landed[2]-end[2])<.5);assert(Math.abs(landed[1]-.9-end[1])<.2);assert.equal(await b.evaluate(()=>window.__game.vm.root.visible),true);
+ }
+ console.log('PASS host-authorized guest zip-line rides in both directions, visible raised-arm pose, landing and weapon restoration');
+ await position(b,[12,34.31,9]);await b.keyboard.press('e',{delay:100});await wait(b,()=>window.__game.ziplines.active);await b.waitForTimeout(700);await b.keyboard.press('Space',{delay:100});await wait(b,()=>!window.__game.ziplines.active);await wait(a,()=>window.__game.ziplines.rides.size===0);assert.equal(await b.evaluate(()=>window.__game.vm.root.visible),true);console.log('PASS Space releases the rider and synchronizes dismount to the host');
+ assert.deepEqual(errors,[]);await a.evaluate(()=>window.__game.online.endLobby());console.log('PASS no browser errors; isolated test lobby closed');
+}catch(e){console.error(e);for(const p of[a,b])if(p)console.log(await p.evaluate(()=>{const g=window.__game;return{state:g.state,pos:g.player.pos.toArray(),alive:g.player.alive,rides:g.ziplines.snapshot(),status:document.querySelector('#lobby-status').textContent};}).catch(()=>null));process.exitCode=1;}finally{await browser.close();}

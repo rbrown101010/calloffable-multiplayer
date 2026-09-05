@@ -38,7 +38,7 @@ export interface WeaponDef {
   model: ModelDef;
   tracer: boolean; flashScale: number; shell: 'rifle' | 'pistol' | 'shotgun' | 'sniper';
   optic?: 'red-dot' | 'holographic';
-  projectile?: {kind:'rocket'|'grenade';speed:number;gravity:number;radius:number;damage:number;fuse:number};
+  projectile?: {kind:'rocket'|'grenade';speed:number;gravity:number;radius:number;damage:number;fuse:number;armingDistance?:number;impactDamage?:number};
   killIcon?: string;
 }
 
@@ -161,11 +161,17 @@ WEAPONS.p90={...WEAPONS.mp5,id:'p90',name:'P90',rpm:900,damage:25,mag:50,reserve
 WEAPONS.g36={...WEAPONS.scarh,id:'g36',name:'G36C',damage:32,rpm:750,mag:30,reserve:120,recoilPitch:.7*D,speedMul:1.02,adsTime:.2,model:model('g36')};
 WEAPONS.vector={...WEAPONS.mp5,id:'vector',name:'VECTOR .45',damage:23,rpm:1100,mag:25,reserve:150,falloffStart:12,falloffEnd:30,recoilPitch:.4*D,speedMul:1.19,model:model('vector')};
 WEAPONS.rpg7={...WEAPONS.scarh,id:'rpg7',name:'RPG-7',cls:'launcher',mode:'semi',damage:180,headMul:1,mag:1,reserve:4,rpm:30,reloadTime:3.1,reloadEmptyTime:3.1,adsTime:.35,adsFov:62,hipSpread:.8,adsSpread:.15,bloom:0,bloomMax:0,speedMul:.76,bulletSpeed:64,model:model('rpg7'),projectile:{kind:'rocket',speed:64,gravity:1.2,radius:8,damage:180,fuse:5}};
-WEAPONS.m32={...WEAPONS.spas12,id:'m32',name:'M32 GL',cls:'launcher',mode:'semi',damage:120,headMul:1,pellets:1,pelletSpread:0,mag:6,reserve:12,rpm:90,reloadTime:4.1,reloadEmptyTime:4.1,boltTime:0,hipSpread:1.5,adsSpread:.5,speedMul:.84,bulletSpeed:29,model:model('m32'),projectile:{kind:'grenade',speed:29,gravity:13,radius:5.8,damage:125,fuse:3.5}};
+WEAPONS.m32={...WEAPONS.spas12,id:'m32',name:'M32 GL',cls:'launcher',mode:'semi',damage:180,headMul:1,pellets:1,pelletSpread:0,mag:6,reserve:12,rpm:42,reloadTime:5,reloadEmptyTime:5,boltTime:0,hipSpread:1.5,adsSpread:.5,speedMul:.84,bulletSpeed:38,model:model('m32'),projectile:{kind:'grenade',speed:38,gravity:15,radius:7.2,damage:180,fuse:5,armingDistance:6,impactDamage:140}};
 WEAPONS.mp7={...WEAPONS.mp5,id:'mp7',name:'MP7',damage:22,rpm:950,mag:20,reserve:80,falloffStart:9,falloffEnd:24,speedMul:1.19,model:model('mp7')};
 WEAPONS.intervention.speedMul=.68;
 WEAPONS.mp5.speedMul=1.19;
 for(const d of Object.values(WEAPONS))if(['ar','smg','lmg'].includes(d.cls))d.optic='red-dot';
+
+// Source models are normalized to meters and face down the weapon's -Z axis.
+for(const id of ['ak47','spas12','m14','m249','p90','g36','vector','rpg7','m32','mp7']){
+ const d=WEAPONS[id];d.model={...d.model,url:'/models/weapons/'+id+'.glb',scale:1,rot:[0,0,0],hip:[.22,-.2,id==='rpg7'?-.6:-.46],ads:[0,-.09,-.4]};
+}
+WEAPONS.m32.optic='red-dot';WEAPONS.m32.flashScale=.7;WEAPONS.m32.audio={...WEAPONS.spas12.audio!,rate:.68,sub:.9,crack:.2,vol:.85};
 
 export type Equipment={primary:string;secondary:string};
 export const PRIMARY_WEAPONS=['scarh','ak47','g36','mp5','p90','vector','m14','intervention','spas12','m249','rpg7'];

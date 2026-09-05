@@ -12,6 +12,18 @@ The creator chooses the map, player limit, bot fill and score limit, then copies
 
 Only the creator can start/rematch, change map/capacity, remove players or end the lobby. Guests do not take over if the creator leaves. Rematches keep the invitation; a newly created lobby gets a fresh invitation.
 
+## Skyline Reloaded update
+
+- Ten detailed weapon replacements, plus a modeled optical sight with an unobstructed window and aligned red-dot / holographic reticles. Intervention is retained. Weapon previews use the actual new models.
+- M32 fires at 42 RPM (one shot every 1.43 seconds), reloads in five seconds, and deals up to 180 blast damage. Rounds follow a gravity-driven arc, arm after six meters, bounce as duds if they hit cover too early, and expire without an airburst. Close direct hits deal 140 damage. Solid cover blocks splash.
+- Detailed quad bikes, faster dirt bikes and attack helicopters replace the primitive models. Wheels steer and roll around their axles; both helicopter rotors animate. Geometry / textures are shared and compressed; weapon materials are prepared during loading.
+- North Signals, West Armory and Logistics HQ add two-floor interiors, alternate stairs, roof positions, firing windows, checkpoints and cover. Scanned military crates, barrels and barriers replace plain boxes and cylinders. Supplies use grounded equipment models.
+- A powered zip line connects **Central Tower's roof** and **Freight Overlook** in both directions. Take the elevator to floor 8, walk through the east opening to the exterior ladder, and climb to the roof. At either cable terminal, press **E** to ride; **Space or E** drops off early. Weapons are lowered during the ride. The host authorizes boarding and all peers see the same rider position.
+
+This update uses multiplayer protocol 7. Refresh all clients and create a new lobby after deploying it; older invitations must not mix different map geometry. The host creation code is unchanged.
+
+Models keep their third-party licenses. See [asset credits](public/CREDITS.md) and [source manifest](public/models/asset-sources.json). The M32 model is CC BY-NC 4.0 and remains restricted to non-commercial use.
+
 ## Skyline Assault update
 
 - **Custom weapons:** choose a primary and secondary independently, with actual model previews. Press **L** during a match to queue both weapons for the next respawn. The lobby, score and voice connection remain intact. Both weapons reset together on a new life.
@@ -61,7 +73,8 @@ Earned unused rewards survive death. The streak counter resets when you die. Adv
 | 1 / 2 / Q / wheel | Switch equipped weapon |
 | G | Cook and throw frag |
 | L | Customize weapons for next respawn |
-| E near vehicle / lift | Enter or exit vehicle / call or operate lift |
+| E near vehicle / lift / zip line | Enter or exit vehicle / operate lift / ride cable |
+| Space / E on zip line | Drop off |
 | Space / Shift while driving | Brake / boost |
 | Tab | Scoreboard |
 | Esc | Pause / settings; multiplayer simulation continues |
@@ -98,3 +111,12 @@ TEST_URL='http://127.0.0.1:5182/?nolock&god' node tools/benchmark.mjs
 Stack: TypeScript, Vite, Three.js, Rapier, InstantDB, WebRTC and Web Audio. Read [MULTIPLAYER.md](MULTIPLAYER.md) for authority, voice and deployment details. Server secrets must never use a `VITE_` prefix.
 
 Code is MIT. Third-party assets retain the licenses in [public/CREDITS.md](public/CREDITS.md). The retained Rust arena is a fan tribute; Call of Duty and Rust are Activision trademarks.
+
+### Visual update checks
+
+```sh
+TEST_URL=http://127.0.0.1:5182 npm run test:visual-round
+TEST_URL=http://127.0.0.1:5182 npm run test:zipline
+```
+
+The first check walks the new roof routes with the real character controller, checks cable clearance and vehicle axles, and tests launcher arming / collision. The second opens separate host and guest browsers and verifies both directions, remote rider visibility, and early dismounts against the isolated test lobby.
