@@ -11,7 +11,7 @@ import { VEHICLE_WEAPON, vehicleName, type VehicleState } from './Vehicles';
 import type { FieldState } from './FieldItems';
 import type { EntityHit } from './Weapons';
 
-type Presence={id:string;name:string;joined:number;ready:boolean;loadout:number;mic:boolean;owner:boolean;preparedRound:string;world?:World;};
+type Presence={peerId?:string;id:string;name:string;joined:number;ready:boolean;loadout:number;mic:boolean;owner:boolean;preparedRound:string;world?:World;};
 type Pose={id:string;name:string;p:number[];yaw:number;pitch:number;ads:number;speed:number;crouch:boolean;weapon:string;health:number;alive:boolean;kills:number;deaths:number;score:number;streak:number;deathAt:number;life:number;loadout:number;vehicle?:number;};
 type World={seq?:number;round:string;map:MapId;phase:'lobby'|'loading'|'playing'|'ended';startAt:number;endsAt:number;limit:number;bots:number;maxPlayers:number;kicked:string[];streaks?:StreakState;entities:Pose[];vehicles?:VehicleState[];items?:FieldState[];};
 const vec=(p:number[])=>new THREE.Vector3(p[0],p[1],p[2]);
@@ -28,6 +28,7 @@ export class Online {
   private db?:ReturnType<typeof init>; private room?:RoomHandle<any,any>; private unsubs:(()=>void)[]=[];
   private lastSend=0;private lastPresence=0;private poseTargets=new Map<string,Pose>();private deathTimes=new Map<string,number>();private hurtTimes=new Map<string,number>();
   private shots=new Map<string,{seq:number;at:number;weapon:string;remaining:number}>();private shotSeq=0;private starting=false;private joinedAt=0;private lastHostPacket=0;private lastPoseSeq=new Map<string,number>();private poseSeq=0;
+  private hostMode=false;private sessionRoom='';private access='';private statusTimer?:ReturnType<typeof setInterval>;private checkingSession=false;private lastSessionCheck=0;private verifiedPeers=new Map<string,string>();private rawPresence:Presence[]=[];private myPeerId='';private requestingStart=false;
   private worldHost='';private nextRemoteId=100;
   private preparedRound='';private preparingRound='';private launching=false;
   private received=new Set<string>();private events:any[]=[];private lastPing=0;ping=0;private copyKey='';private lastRoster='';
@@ -46,6 +47,9 @@ export class Online {
     el('btn-online').onclick=()=>{el('lobby').classList.remove('hidden');};
     el('lobby-close').onclick=()=>{if(this.active){el('lobby').classList.add('hidden');this.g.resume();}else if(!this.connected)el('lobby').classList.add('hidden');else this.status('You are still in the lobby. Ready up to play, or use Leave lobby.');};
     el('lobby-leave').onclick=()=>this.leave();
+    el('lobby-end').onclick=()=>void this.endLobby();
+    el('lobby-mode-join').onclick=()=>this.entryMode(false);
+    el('lobby-mode-host').onclick=()=>this.entryMode(true);
     el('lobby-resume').onclick=()=>{el('lobby').classList.add('hidden');this.g.resume();};
     el('invite-hint').textContent=this.copyKey?'Invite link loaded. Choose your callsign and join.':'';
     for(const id of ['callsign','invite-code'])el(id).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();void this.join();}});
@@ -57,24 +61,64 @@ export class Online {
     el('online-mic').onclick=()=>void this.mic?.toggle();
     el<HTMLInputElement>('voice-ptt').onchange=e=>this.mic?.setPTT((e.target as HTMLInputElement).checked);
     el('lobby-return').onclick=()=>{this.g.input.unlock();el('lobby').classList.remove('hidden');};
-    if(this.copyKey)el('lobby').classList.remove('hidden');
+    this.entryMode(hash.has('host'),hash.get('host')||this.copyKey);
+    if(this.copyKey||hash.has('host'))el('lobby').classList.remove('hidden');
   }
-  get isHost(){return this.connected&&this.id===this.hostId;}
+  get isHost(){return this.connected&&this.owner&&this.id===this.hostId;}
   get active(){return this.connected&&this.world.phase==='playing';}
   entityId(e:any){return e===this.g.player?this.id:e?.netId||('bot-'+e?.id);}
   entity(id:string):any {return id===this.id?this.g.player:this.remotes.get(id)||this.g.bots.bots.find(b=>'bot-'+b.id===id);}
   get targets(){return [...this.remotes.values()].map(b=>({entity:b,pos:b.chestPos.clone(),head:b.headPos,alive:b.alive,name:b.name}));}
   get victims(){return [...this.g.bots.victims,...[...this.remotes.values()].map(b=>({entity:b,pos:b.pos.clone(),alive:b.alive}))];}
   private status(text:string){el('lobby-status').textContent=text;}
+  private entryMode(host:boolean,key=''){
+    this.hostMode=host;el('lobby-mode-host').setAttribute('aria-pressed',String(host));el('lobby-mode-join').setAttribute('aria-pressed',String(!host));
+    const input=el<HTMLInputElement>('invite-code');input.value=key||(!host?this.copyKey:'');input.inputMode=host?'numeric':'text';input.maxLength=host?6:200;
+    input.placeholder=host?'Enter the 6-digit create-game code':'Open an invite link or paste its code';
+    el('invite-code-label').textContent=host?'CREATE-GAME CODE':'INVITATION CODE';
+    el('lobby-join').textContent=host?'CREATE NEW LOBBY':'JOIN PRIVATE LOBBY';
+    el('invite-hint').textContent=host?'Creating a lobby ends the previous lobby. You will be the host.':'Enter your callsign and join with the host’s invitation.';
+    el('lobby-status').textContent='';
+  }
+  private async sessionAction(action:string){
+    const response=await fetch('/api/lobby',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,access:this.access})});
+    const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Lobby request failed'),{status:response.status});return data;
+  }
+  private async checkSession(){
+    if(!this.connected||this.checkingSession||Date.now()-this.lastSessionCheck<1000)return;
+    const room=this.sessionRoom;this.checkingSession=true;this.lastSessionCheck=Date.now();
+    try{const data=await this.sessionAction('status');if(!this.connected||this.sessionRoom!==room)return;
+      this.verifiedPeers=new Map(data.members.map((p:any)=>[p.peerId,p.id]));this.reconcilePresence();
+    }catch(e){if(this.connected&&this.sessionRoom===room&&[403,410].includes((e as any).status))this.removed((e as Error).message);}
+    finally{this.checkingSession=false;}
+  }
+  private async endLobby(){
+    if(!this.isHost)return;
+    try{await this.sessionAction('end');this.removed('Lobby ended for everyone. Use Create lobby to start fresh.');}catch(e){this.status((e as Error).message);}
+  }
+  private reconcilePresence(){
+    if(!this.connected)return;
+    const authenticated=this.rawPresence.filter(p=>p.peerId===this.myPeerId&&p.id===this.id||this.verifiedPeers.get(p.peerId||'')===p.id);
+    const all=authenticated.map(p=>({...p,owner:p.id===this.hostId})).sort((a,b)=>Number(b.owner)-Number(a.owner)||a.joined-b.joined||a.id.localeCompare(b.id));
+    const authority=all.find(p=>p.id===this.hostId);const rules=authority?.world||this.world;
+    if(rules.kicked?.includes(this.id)){this.removed('The host removed you from this lobby.');return;}
+    const allowed=all.filter(p=>!rules.kicked?.includes(p.id));const capacity=Math.max(2,Math.min(16,rules.maxPlayers||16));
+    if(allowed.findIndex(p=>p.id===this.id)>=capacity){this.removed(`The lobby is full (${capacity} players). Try again when a slot opens.`);return;}
+    const ordered=allowed.slice(0,capacity);this.peers=new Map(ordered.map(p=>[p.id,p]));
+    for(const p of ordered)if(p.id!==this.id&&!this.remotes.has(p.id)&&!this.pending.has(p.id))void this.addRemote(p);
+    for(const [id,b]of this.remotes)if(!this.peers.has(id)){this.g.vehicles.release(id);this.disposeRemote(b);this.remotes.delete(id);this.poseTargets.delete(id);}
+    if(!this.isHost&&authority?.world)this.receiveWorld(authority.world);
+    void this.mic?.sync(ordered.map(p=>p.id));this.render();
+  }
   async join(){
     if(this.joining||this.connected)return;
     if(!el<HTMLInputElement>('callsign').value.trim()){this.status('Enter a callsign so your friends can recognize you.');el('callsign').focus();return;}
     this.joining=true;el<HTMLButtonElement>('lobby-join').disabled=true;this.status('Connecting to the private lobby…');
     try{
       this.copyKey=el<HTMLInputElement>('invite-code').value.trim();
-      const response=await fetch('/api/lobby',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:this.copyKey,name:el<HTMLInputElement>('callsign').value,token:sessionStorage.getItem('sable-token')})});
+      const response=await fetch('/api/lobby',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:this.hostMode?'create':'join',requestId:crypto.randomUUID(),key:this.copyKey,name:el<HTMLInputElement>('callsign').value,token:sessionStorage.getItem('sable-token')})});
       const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not join.');
-      this.id=data.id;this.name=clean(data.name);this.owner=data.owner;this.inviteKey=data.inviteKey||this.copyKey;this.joinedAt=Date.now();
+      this.id=data.id;this.name=clean(data.name);this.owner=data.owner;this.hostId=data.ownerId;this.sessionRoom=data.roomId;this.access=data.access;this.inviteKey=data.inviteKey;this.copyKey=data.inviteKey;this.joinedAt=Date.now();
       localStorage.setItem('sable-callsign',this.name);sessionStorage.setItem('sable-invite',this.copyKey);sessionStorage.setItem('sable-token',data.token);
       // Explicit endpoints keep this SDK version's init/shutdown cache keys identical on rejoin.
       const client=this.db=init({appId:import.meta.env.VITE_INSTANT_APP_ID||'ec099d8e-0cbc-4742-87f6-e01fac862c5c',apiURI:'https://api.instantdb.com',websocketURI:'wss://api.instantdb.com/runtime/session'});
@@ -83,29 +127,27 @@ export class Online {
       this.mic=new VoiceChat(this.id,data.iceServers,msg=>this.send(msg));
       this.mic.onChange=()=>{this.publishPresence();this.render();};this.mic.onError=m=>this.status(m);
       // Map-loading acknowledgements must not mix with older single-map browser tabs.
-      this.room=this.db.joinRoom('sable',data.roomId+'-match-v4',{initialPresence:this.presence()});
+      this.room=this.db.joinRoom('sable',data.roomId+'-match-v5',{initialPresence:this.presence()});
       this.unsubs.push(this.room.subscribePresence({},slice=>{
         if(!this.connected||this.db!==client)return;
         if(slice.error){this.status('Lobby connection error. Rejoin to try again.');return;}
         if(slice.isLoading)return;
-        const list=[slice.user,...Object.values(slice.peers||{})].filter((p:any)=>p?.id&&p?.name) as unknown as Presence[];
-        const all=list.sort((a,b)=>a.joined-b.joined||a.id.localeCompare(b.id));
-        const authority=all.find(p=>p.id===this.hostId)||all[0];
-        const rules=authority?.world||this.world;
-        if(rules.kicked?.includes(this.id)){this.removed('The host removed you from this lobby.');return;}
-        const allowed=all.filter(p=>!rules.kicked?.includes(p.id));
-        const capacity=Math.max(2,Math.min(16,rules.maxPlayers||16));
-        if(allowed.findIndex(p=>p.id===this.id)>=capacity){this.removed(`The lobby is full (${capacity} players). Try again when a slot opens.`);return;}
-        const ordered=allowed.slice(0,capacity);this.peers=new Map(ordered.map(p=>[p.id,p]));
-        const old=this.hostId;this.hostId=ordered[0]?.id||this.id;
-        if(old&&old!==this.hostId){if(this.isHost){this.lastPoseSeq.clear();for(const id of this.poseTargets.keys())if(id.startsWith('bot-'))this.poseTargets.delete(id);this.g.bots.frozen=Date.now()<this.world.startAt;}this.status('Host transferred to '+this.peers.get(this.hostId)?.name);this.lastHostPacket=Date.now();}
-        for(const p of ordered)if(p.id!==this.id&&!this.remotes.has(p.id)&&!this.pending.has(p.id))void this.addRemote(p);
-        for(const [id,b]of this.remotes)if(!this.peers.has(id)){this.g.vehicles.release(id);this.disposeRemote(b);this.remotes.delete(id);this.poseTargets.delete(id);}
-        if(!this.isHost){const snapshot=this.peers.get(this.hostId)?.world;if(snapshot)this.receiveWorld(snapshot);}
-        void this.mic?.sync(ordered.map(p=>p.id));this.render();
+        this.myPeerId=(slice.user as any)?.peerId||this.myPeerId;
+        this.rawPresence=[slice.user,...Object.values(slice.peers||{})].filter((p:any)=>p?.id&&p?.name) as unknown as Presence[];
+        this.reconcilePresence();
+        if(this.rawPresence.some(p=>p.id!==this.id&&!this.verifiedPeers.has(p.peerId||'')))void this.checkSession();
       }));
-      this.unsubs.push(this.room.subscribeTopic('wire',(data:any,peer:any)=>{if(!this.connected||this.db!==client||!peer?.id||peer.id===this.id||!this.peers.has(peer.id))return;this.receive(peer.id,data);}));
+      this.unsubs.push(this.room.subscribeTopic('wire',(data:any,peer:any)=>{
+        if(!this.connected||this.db!==client||!peer?.id||peer.id===this.id||!this.peers.has(peer.id))return;
+        // This SDK passes the raw presence object to topic callbacks, without peerId.
+        // Resolve its identity in the transport cache; never trust a payload's peerId.
+        const transportPeers=(client._reactor as any)._presence[this.sessionRoom+'-match-v5']?.result?.peers||{};
+        const transportId=Object.keys(transportPeers).find(id=>transportPeers[id]===peer);
+        if(!transportId||this.verifiedPeers.get(transportId)!==peer.id)return;
+        this.receive(peer.id,data);
+      }));
       this.unsubs.push(this.db.subscribeConnectionStatus(s=>{if(!this.connected||this.db!==client)return;const ok=s==='authenticated';el('online-status').textContent=ok?'PRIVATE SESSION':'RECONNECTING…';if(!ok)this.status('Connection interrupted. Trying to reconnect…');else if(el('lobby-status').textContent?.startsWith('Connection interrupted'))this.status('Connected to the private lobby.');}));
+      this.lastSessionCheck=0;void this.checkSession();this.statusTimer=setInterval(()=>void this.checkSession(),3000);
       el('join-fields').classList.add('hidden');el('lobby-session').classList.remove('hidden');this.status(this.isHost?'You are the host. Copy the invite link, choose a class, then start when everyone is ready.':'Connected. Choose your class and click Ready up. The host starts the match.');this.publishPresence();
     }catch(e){this.status((e as Error).message);this.connected=false;this.db?.shutdown();}
     finally{this.joining=false;el<HTMLButtonElement>('lobby-join').disabled=false;}
@@ -134,6 +176,7 @@ export class Online {
     const people=[...this.peers.values()].sort((a,b)=>a.joined-b.joined);
     const roster=JSON.stringify(people.map(p=>[p.id,p.name,p.ready,p.loadout,p.mic]))+this.hostId;
     if(roster!==this.lastRoster){this.lastRoster=roster;const wrap=el('lobby-roster');wrap.innerHTML='';people.forEach((p,i)=>{const row=document.createElement('div');row.className='lobby-person';row.innerHTML=`<span class="slot-no">${String(i+1).padStart(2,'0')}</span><div><b>${escape(p.name)} ${p.id===this.id?'<small>YOU</small>':''}</b><span>${LOADOUTS[p.loadout]?.name||'ASSAULT'}${p.id===this.hostId?' · HOST':''}</span></div><span class="ready-dot ${p.ready?'yes':''}">${p.ready?'READY':'PREPARING'}</span>`;const mute=document.createElement('button');mute.className='mute-peer';mute.textContent=p.mic?'MIC ON':'MIC OFF';mute.title='Mute / unmute this player';let muted=!!this.mic?.isPeerMuted(p.id);if(muted)mute.textContent='MUTED';mute.onclick=()=>{muted=!muted;this.mic?.setPeerMuted(p.id,muted);mute.textContent=muted?'MUTED':p.mic?'MIC ON':'MIC OFF';};row.append(mute);if(this.isHost&&p.id!==this.id){const kick=document.createElement('button');kick.className='kick-peer';kick.textContent='KICK';kick.setAttribute('aria-label','Kick '+p.name);kick.onclick=()=>this.kick(p.id);row.append(kick);}wrap.append(row);});}
+    el('lobby-end').classList.toggle('hidden',!this.isHost);
     el('lobby-count').textContent=`${people.length} / ${this.world.maxPlayers} OPERATORS`;
     el<HTMLSelectElement>('lobby-capacity').value=String(this.world.maxPlayers);el<HTMLSelectElement>('lobby-capacity').disabled=!this.isHost;
     el('lobby-capacity-note').textContent=this.isHost?'You can change this limit up to 16. Remove players before lowering it below the current roster.':`The host set this lobby to ${this.world.maxPlayers} players.`;
@@ -165,10 +208,12 @@ export class Online {
     this.world.map=map;this.broadcastWorld();this.publishPresence();this.render();
   }
   async start(){
-    if(!this.isHost||this.starting||this.world.phase==='loading')return;
+    if(!this.isHost||this.starting||this.requestingStart||this.world.phase==='loading')return;
     if(this.active){el('lobby').classList.add('hidden');this.g.resume();return;}
     if([...this.peers.values()].some(p=>p.id!==this.id&&!p.ready)){this.status('Waiting for the other operators to ready up.');return;}
-    this.world={round:crypto.randomUUID(),map:this.world.map,phase:'loading',startAt:Date.now(),endsAt:0,limit:Number(el<HTMLSelectElement>('lobby-limit').value),bots:Number(el<HTMLSelectElement>('lobby-bots').value),maxPlayers:this.world.maxPlayers,kicked:this.world.kicked,entities:[]};
+    this.requestingStart=true;let grant;try{grant=await this.sessionAction('start');}catch(e){this.status((e as Error).message);return;}finally{this.requestingStart=false;}
+    if(!this.connected||!this.isHost)return;
+    this.world={round:grant.round,map:this.world.map,phase:'loading',startAt:Date.now(),endsAt:0,limit:Number(el<HTMLSelectElement>('lobby-limit').value),bots:Number(el<HTMLSelectElement>('lobby-bots').value),maxPlayers:this.world.maxPlayers,kicked:this.world.kicked,entities:[]};
     this.poseTargets.clear();this.lastPoseSeq.clear();this.deathTimes.clear();this.hurtTimes.clear();this.events=[];this.received.clear();this.shots.clear();
     for(const b of this.remotes.values()){b.kills=0;b.deaths=0;b.score=0;b.streak=0;}
     this.preparedRound='';this.broadcastWorld();this.publishPresence();void this.prepareMap();
@@ -403,5 +448,5 @@ export class Online {
   streakShot(event:any){if(this.isHost){this.g.killstreaks.shot(event);this.send(event);}}
   streakDamage(target:any,attacker:any,amount:number,point:THREE.Vector3){return this.damage(this.entityId(target),this.entityId(attacker),amount,'body','CHOPPER GUNNER',point);}
   finish(){if(!this.isHost||this.world.phase==='ended')return;this.world.phase='ended';this.broadcastWorld();this.publishPresence();this.g.match.over=true;this.g.showEndScreen();this.render();}
-  leave(){if(this.g.vehicles.current)this.vehicleAction(this.g.vehicles.current.id,'exit');this.g.vehicles.release(this.id);this.g.vehicles.detach();this.connected=false;this.mic?.destroy();this.unsubs.forEach(fn=>fn());this.unsubs=[];this.room?.leaveRoom();this.db?.shutdown();this.db=undefined;this.room=undefined;for(const b of this.remotes.values())this.disposeRemote(b);this.remotes.clear();this.peers.clear();this.poseTargets.clear();this.g.bots.extraTargets=[];this.g.player.regenDelay=4.2;this.g.showMenu();this.world.phase='lobby';el('join-fields').classList.remove('hidden');el('lobby-session').classList.add('hidden');el('online-bar').classList.add('hidden');el('lobby').classList.add('hidden');el('map-transition').classList.add('hidden');this.preparedRound='';this.worldHost='';this.hostId='';this.ready=false;this.lastRoster='';this.world={round:'',map:this.g.mapId,phase:'lobby',startAt:0,endsAt:0,limit:20,bots:4,maxPlayers:16,kicked:[],entities:[]};}
+  leave(){clearInterval(this.statusTimer);this.statusTimer=undefined;this.sessionRoom='';this.access='';this.verifiedPeers.clear();this.rawPresence=[];this.myPeerId='';if(this.g.vehicles.current)this.vehicleAction(this.g.vehicles.current.id,'exit');this.g.vehicles.release(this.id);this.g.vehicles.detach();this.connected=false;this.owner=false;this.mic?.destroy();this.unsubs.forEach(fn=>fn());this.unsubs=[];this.room?.leaveRoom();this.db?.shutdown();this.db=undefined;this.room=undefined;for(const b of this.remotes.values())this.disposeRemote(b);this.remotes.clear();this.peers.clear();this.poseTargets.clear();this.g.bots.extraTargets=[];this.g.player.regenDelay=4.2;this.g.showMenu();this.world.phase='lobby';el('join-fields').classList.remove('hidden');el('lobby-session').classList.add('hidden');el('online-bar').classList.add('hidden');el('lobby').classList.add('hidden');el('map-transition').classList.add('hidden');this.preparedRound='';this.worldHost='';this.hostId='';this.ready=false;this.lastRoster='';this.world={round:'',map:this.g.mapId,phase:'lobby',startAt:0,endsAt:0,limit:20,bots:4,maxPlayers:16,kicked:[],entities:[]};}
 }

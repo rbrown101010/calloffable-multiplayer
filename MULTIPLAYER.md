@@ -1,12 +1,14 @@
 # Private multiplayer
 
-## One lobby
+## Creating and joining a lobby
 
-The public site supports solo play. Multiplayer requires an unguessable invitation key. A Vercel function compares it against server-only environment variables, issues an InstantDB user token, and returns the one private room ID. The room ID is derived from the owner key and is not embedded in the public JavaScript.
+Choose **Create lobby**, enter a callsign and the six-digit create-game code, then select **Create new lobby**. The code is held only in the server's `LOBBY_HOST_PIN` environment variable. Anyone given that code can create a lobby. Creation replaces the previous lobby and issues a fresh invite link. Friends use **Join a lobby** and the copied invitation; the create-game code is never included in that link.
 
-Invite URLs use a fragment (`#invite=…`), which is removed from the address bar and kept in the current tab's session storage. The owner's `#host=…` link additionally retrieves the shareable invitation key. The first connected player is the simulation host; ownership and simulation hosting are separate.
+The server records the current lobby, its creator, and its invitation in a private InstantDB namespace. Only the creator can start/rematch, change map/capacity, kick players, or end that lobby. Server endpoints authorize start/end, and clients authenticate transport peer identities before accepting the creator's messages. Guests never take over hosting when the creator leaves. Each client checks every three seconds for session expiry or a replacement lobby and leaves the old game when it has ended. **End lobby for everyone** closes the session explicitly.
 
-No room list or public matchmaking exists. The host sets a player limit from 2 to 16 humans. AI fill is reduced as people join. Matches are free-for-all on either Rust (small) or Sable Reach (large), with shared countdown, score limit, timer, scoreboard, deaths, respawns, and rematches. Late arrivals receive the host snapshot. Leaving the room transfers hosting to the next player.
+The six-digit code has a limit of eight incorrect attempts per 15-minute IP window. Failed-attempt counts are persisted server-side. Legacy host links and invitation codes are revoked by the reset. Each newly created lobby has its own invitation; rematches inside that lobby keep the same invitation.
+
+Matches remain free-for-all on Rust or Sable Reach, with optional microphones, shared enemies, and a creator-selected limit of 2–16 humans.
 
 ## Choosing a map
 
@@ -22,7 +24,7 @@ An invite opens the callsign form directly. No email/password signup is needed. 
 
 Class selection queues equipment for the next life. Only the host grants respawns. Every player pose and spawn grant carries a life number and equipped class; a guest applies each life once, so a repeated grant or world snapshot cannot refill ammo or revert equipment. The host checks shots against that life's class, independently of the next class selected in presence. Weapons are cloned from templates preloaded at boot and both slots reset atomically on respawn.
 
-World snapshots carry a monotonic sequence; recovery snapshots from presence cannot replace newer live state. Guest movement goes to the host and every other avatar is rendered from the host's snapshots, avoiding competing movement streams. Bot visibility and hitboxes follow the same authoritative roster through respawns and late joins. Protocol v4 uses a room suffix so old open tabs cannot mix incompatible map and spawn messages with the updated build. Everyone should refresh after this update; invite links remain the same.
+World snapshots carry a monotonic sequence; recovery snapshots from presence cannot replace newer live state. Guest movement goes to the host and every other avatar is rendered from the host's snapshots, avoiding competing movement streams. Bot visibility and hitboxes follow the same authoritative roster through respawns and late joins. Protocol v5 uses a room suffix so old open tabs cannot mix incompatible map and spawn messages with the updated build. Everyone should refresh after this update and obtain the new invitation from the creator.
 
 ## Replays, rewards and moderation
 
@@ -57,8 +59,9 @@ The deployment uses Vercel for static assets and `/api/lobby`. Configure these p
 - `VITE_INSTANT_APP_ID`: public app ID.
 - `INSTANT_APP_ID`: same app ID, used by the server.
 - `INSTANT_APP_ADMIN_TOKEN`: sensitive InstantDB admin token.
-- `LOBBY_HOST_KEY`: sensitive random owner key (at least 32 random bytes).
-- `LOBBY_INVITE_KEY`: sensitive random invite key (at least 24 random bytes).
+- `LOBBY_HOST_KEY`: sensitive random server signing secret (at least 32 random bytes).
+- `LOBBY_HOST_PIN`: six-digit create-game code, shared only with people allowed to create games.
+- Legacy `LOBBY_INVITE_KEY` is no longer used; each lobby receives a fresh random invitation.
 - `TURN_ICE_SERVERS`: optional sensitive JSON configuration for a private TURN relay.
 
 `vercel.json` configures the Vite build, static output, no-store API responses, microphone permissions and no-referrer policy. `.vercelignore` excludes local secrets and inspection/test output.

@@ -17,7 +17,8 @@
     "test:combat": "node --env-file=.env.local tools/verify-combat-pass.mjs",
     "test:capacity": "node --env-file=.env.local tools/verify-capacity.mjs",
     "test:combat-edges": "node tools/verify-combat-edges.mjs",
-    "test:motorcycles": "node --env-file=.env.local tools/verify-motorcycles.mjs"
+    "test:motorcycles": "node --env-file=.env.local tools/verify-motorcycles.mjs",
+    "test:lobby-reset": "node --env-file=.env.local tools/verify-lobby-reset.mjs"
   },
   "devDependencies": {
     "@ai-sdk/gateway": "^4.0.72",

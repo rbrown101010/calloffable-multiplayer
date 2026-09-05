@@ -261,3 +261,5 @@ button,select,input{font:inherit}button:focus-visible,select:focus-visible,input
 .loadout-guns{grid-column:1/-1;display:flex;align-items:center;gap:8px;min-width:0}.weapon-preview{display:block;width:100%;height:auto;object-fit:contain;filter:drop-shadow(0 5px 4px #0006)}.loadout-guns .weapon-preview:first-child{width:65%}.loadout-guns .weapon-preview:last-child{width:30%}.lo .loadout-guns{margin-top:-3px}#class-options .lo{min-height:122px}#loadout-detail>.weapon-preview{max-height:84px}#loadouts .lo{min-height:122px}#death-replay{z-index:34}body.replaying #end{visibility:hidden}
 
 #death-replay.scoped:before{content:'';position:absolute;inset:0;background:radial-gradient(circle at center,transparent 0 32vh,#020503 32.3vh);pointer-events:none}#death-replay.scoped .death-replay-reticle{font-size:40px;color:#1b1b1b}#death-replay .death-replay-top,#death-replay .death-replay-bottom{z-index:1}
+
+.lobby-entry-modes{display:flex;gap:12px;margin-bottom:20px}.lobby-entry-modes button{flex:1}.lobby-entry-modes [aria-pressed="true"]{border-color:#d4b978;color:#efd794;background:#d4b97818}#lobby-end{color:#f5a79e;margin-left:20px}
