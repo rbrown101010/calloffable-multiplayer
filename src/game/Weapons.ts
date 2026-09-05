@@ -1,3 +1,4 @@
+import {buildArmoryWeapon} from './ArmoryModels';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -23,7 +24,7 @@ export function loadWeaponModel(def: WeaponDef): Promise<THREE.Object3D> {
   const url = def.model.url;
   if (!modelCache.has(url)) {
     const p: Promise<THREE.Object3D> = url.startsWith('proc:')
-      ? Promise.resolve(url === 'proc:intervention' ? buildIntervention() : url==='proc:ak47'?buildAK47():new THREE.Group())
+      ? Promise.resolve(url === 'proc:intervention' ? buildIntervention() : url==='proc:ak47'?buildAK47():buildArmoryWeapon(url.slice(5)))
       : new Promise((res, rej) => gltfLoader.load(url, (g) => res(g.scene), undefined, (e) => rej(e)));
     modelCache.set(url, p.catch((e) => { console.warn('weapon model failed', url, e); return placeholderGun(); }).then(m => { loadedModels.set(url, m); return m; }));
   }
@@ -65,7 +66,8 @@ export class ViewModel {
   reloadT = -1; reloadDur = 1; boltT = -1; boltDur = 1; drawT = 1; drawDur = 0.4; holsterT = -1; holsterDur = 0.25; throwT = -1;
   magNode: THREE.Object3D | null = null; magRest = new THREE.Vector3();
   scopedHidden = false; bboxMin = new THREE.Vector3(); bboxMax = new THREE.Vector3();
-  optic=new THREE.Group();private reticle=new THREE.Mesh(new THREE.CircleGeometry(.0015,16),new THREE.MeshBasicMaterial({color:0xff3026,depthTest:false,toneMapped:false}));
+  optic=new THREE.Group();private holo=new THREE.Group();private reticle=new THREE.Mesh(new THREE.CircleGeometry(.0015,16),new THREE.MeshBasicMaterial({color:0xff3026,depthTest:false,toneMapped:false}));
+  private holoReticle=new THREE.Mesh(new THREE.RingGeometry(.0047,.0052,32),new THREE.MeshBasicMaterial({color:0xff3026,depthTest:false,toneMapped:false}));
   fragRoot=new THREE.Group();private fragHand=new THREE.Group();private frag=buildGrenade();
   private _e = new THREE.Euler(); private _v = new THREE.Vector3();
 
@@ -75,7 +77,10 @@ export class ViewModel {
     const rim=new THREE.Mesh(new THREE.TorusGeometry(.045,.005,6,24),opticMat);this.optic.add(rim);
     const mount=new THREE.Mesh(new THREE.BoxGeometry(.055,.04,.07),opticMat);mount.position.y=-.058;this.optic.add(mount);
     const lens=new THREE.Mesh(new THREE.CircleGeometry(.042,24),new THREE.MeshBasicMaterial({color:0x97c9bc,transparent:true,opacity:.045,depthWrite:false}));this.optic.add(lens);
-    this.root.add(this.reticle);this.reticle.position.set(0,0,-.35);this.reticle.visible=false;
+    for(const x of[-.049,.049]){const edge=new THREE.Mesh(new THREE.BoxGeometry(.008,.079,.017),opticMat);edge.position.set(x,0,0);this.holo.add(edge);}
+    for(const y of[-.043,.043]){const edge=new THREE.Mesh(new THREE.BoxGeometry(.1,.008,.017),opticMat);edge.position.set(0,y,0);this.holo.add(edge);}
+    const hood=new THREE.Mesh(new THREE.BoxGeometry(.112,.012,.065),opticMat);hood.position.y=.052;this.holo.add(hood);this.holder.add(this.holo);
+    this.root.add(this.reticle);this.reticle.position.set(0,0,-.35);this.reticle.visible=false;this.root.add(this.holoReticle);this.holoReticle.position.set(0,0,-.35);this.holoReticle.visible=false;
     this.root.add(this.fragRoot);this.fragRoot.add(this.fragHand);this.fragRoot.visible=false;
     const sleeve=new THREE.Mesh(new THREE.CapsuleGeometry(.055,.34,4,8),new THREE.MeshStandardMaterial({color:0x59624d,roughness:.95}));sleeve.rotation.x=Math.PI/2;sleeve.position.z=.22;this.fragHand.add(sleeve);
     const glove=new THREE.Mesh(new THREE.BoxGeometry(.1,.07,.13),new THREE.MeshStandardMaterial({color:0x242a25,roughness:.85}));glove.position.set(0,-.012,.015);this.fragHand.add(glove);
@@ -95,7 +100,7 @@ export class ViewModel {
     model.traverse((o) => o.layers.set(VIEW_LAYER));
     // auto-center the geometry on the holder origin (Sketchfab pivots are arbitrary). Computed before parenting so the box is in holder space.
     centerModel(model, this.bboxMin, this.bboxMax);
-    this.modelRoot.add(model);this.optic.visible=def.mode==='auto';this.optic.position.set(0,this.bboxMax.y+.06,0);this.reticle.visible=false;
+    this.modelRoot.add(model);this.optic.visible=def.optic==='red-dot';this.holo.visible=def.optic==='holographic';this.optic.position.set(0,this.bboxMax.y+.06,0);this.holo.position.copy(this.optic.position);this.reticle.visible=false;
     const mags: THREE.Object3D[] = []; model.traverse((o) => { if (/mag(azine)?/i.test(o.name) && !/base|fde/i.test(o.name)) mags.push(o); });
     this.magNode = mags[0] ?? null; if (this.magNode) this.magRest.copy(this.magNode.position);
     this.muzzle.position.set(M.muzzle[0], M.muzzle[1], this.bboxMin.z + 0.01); this.ejectPt.position.set(M.eject[0], M.eject[1], M.eject[2]);
@@ -121,7 +126,7 @@ export class ViewModel {
     const sprintTarget = s.sprinting && s.ads < 0.2 && this.reloadT < 0 ? 1 : 0;
     this.sprintBlend = damp(this.sprintBlend, sprintTarget, 10, dt);
     this.lowerBlend = damp(this.lowerBlend, s.lowered, 10, dt);
-    const px = lerp(M.hip[0], d.mode==='auto'?0:M.ads[0], s.ads), py = lerp(M.hip[1], d.mode==='auto'?-this.optic.position.y:M.ads[1], s.ads), pz = lerp(M.hip[2], M.ads[2], s.ads);
+    const px = lerp(M.hip[0], d.optic?0:M.ads[0], s.ads), py = lerp(M.hip[1], d.optic?-this.optic.position.y:M.ads[1], s.ads), pz = lerp(M.hip[2], M.ads[2], s.ads);
     const pos = this._v.set(lerp(px, M.sprint[0], this.sprintBlend), lerp(py, M.sprint[1], this.sprintBlend), lerp(pz, M.sprint[2], this.sprintBlend));
     const rot = this._e.set(M.sprintRot[0] * this.sprintBlend, M.sprintRot[1] * this.sprintBlend, M.sprintRot[2] * this.sprintBlend);
     // lowered (grenade / climbing)
@@ -177,7 +182,8 @@ export class ViewModel {
     this.holder.position.set(pos.x, pos.y, pos.z); this.holder.rotation.set(rot.x, rot.y, rot.z);
     this.pivot.position.set(this.swayPos.x * adsK + bobX + this.kickPos.x, this.swayPos.y * adsK + bobY + breatheY + this.kickPos.y, this.kickPos.z);
     this.pivot.rotation.set(this.swayRot.x * adsK + this.kickRot.x * 0.06 + breatheR * 0.3, this.swayRot.y * adsK + this.kickRot.y * 0.05, this.swayRot.z * adsK + this.kickRot.z * 0.05 + breatheR + (s.sliding ? -0.12 : 0));
-    this.reticle.visible=d.mode==='auto'&&s.ads>.75&&this.reloadT<0&&!s.lowered&&this.throwT<0;
+    this.holoReticle.visible=d.optic==='holographic'&&s.ads>.75&&this.reloadT<0&&this.holsterT<0;
+    this.reticle.visible=!!d.optic&&s.ads>.75&&this.reloadT<0&&!s.lowered&&this.throwT<0;
     // ---- hide when fully scoped
     const hide = !!d.scope && s.ads > 0.82;
     if (hide !== this.scopedHidden) { this.scopedHidden = hide; this.modelRoot.visible = !hide; }
@@ -289,6 +295,7 @@ export class Gunplay {
   /** Current spread cone in degrees. */
   spread(): number {
     const d = this.def; if (!d) return 0; const p = this.player;
+    if(p.mounted)return Math.min(3.2,d.hipSpread*.6+this.bloom*.4);
     let s = lerp(d.hipSpread, d.adsSpread, p.ads);
     s += d.moveSpread * clamp(p.speed / 5, 0, 1.4) * lerp(1, 0.35, p.ads);
     if (!p.grounded) s += d.jumpSpread;
@@ -369,7 +376,7 @@ export class Gunplay {
       if (this.throwT >= FRAG_RECOVER){this.throwing=false;this.vm.throwT=-1;}
     }
     // ---- firing
-    const trigger = alive && !this.blockFire && (inp.btn(0) || inp.down('KeyF'));
+    const trigger = alive && !this.blockFire && (inp.btn(0) || inp.down('KeyF') || inp.btnHit(0) || inp.hit('KeyF'));
     const canFire = alive && !this.reloading && !this.bolting && !this.holstering && !this.drawing && !this.cooking && !this.throwing && !p.climbing;
     const want = d.mode === 'auto' ? trigger : trigger && !this.triggerWasDown;
     if (want && canFire) {
@@ -407,19 +414,20 @@ export class Gunplay {
     const d = this.def!, slot = this.slot, p = this.player;
     slot.mag--; this.fireTimer = 60 / d.rpm; this.lastShotT = performance.now() / 1000;
     const spread = this.spread(); const fwd = p.forward.clone(); const origin = p.eyePos.clone();
-    const muzzle = this.vm.muzzleWorld(this._m).clone();
-    for (let i = 0; i < d.pellets; i++) {
+    if(p.mounted)origin.addScaledVector(fwd,1.5);
+    const muzzle = p.mounted?origin.clone():this.vm.muzzleWorld(this._m).clone();
+    for (let i = 0; !d.projectile && i < d.pellets; i++) {
       const dir = coneDir(fwd, spread + (d.pellets > 1 ? d.pelletSpread : 0));
       this.bullets.fire(d, origin, dir, p, { tracerStart: muzzle, tracer: d.tracer && (d.pellets === 1 || i % 3 === 0) });
     }
     // recoil & feel
     const recoilP = -d.recoilPitch * rand(0.85, 1.15) * lerp(1, 0.75, p.ads) * (p.crouching ? 0.85 : 1);
     const recoilY = d.recoilYaw * (Math.random() < 0.5 ? -1 : 1) * rand(0.3, 1) * d.recoilRand * lerp(1, 0.75, p.ads);
-    p.applyRecoil(recoilP, recoilY); p.addShake(d.viewKick * 0.06);
+    if(!p.mounted)p.applyRecoil(recoilP, recoilY); p.addShake(d.viewKick * 0.06);
     this.bloom = Math.min(d.bloomMax, this.bloom + d.bloom);
     this.vm.fire(d.viewKick);
     const ej = this.vm.ejectWorld(this._e).clone();
-    if (d.mode !== 'bolt') this.effects.shell(ej, p.right, new THREE.Vector3(0, 1, 0), p.forward.clone().negate(), d.shell);
+    if (!p.mounted&&!d.projectile&&d.mode !== 'bolt') this.effects.shell(ej, p.right, new THREE.Vector3(0, 1, 0), p.forward.clone().negate(), d.shell);
     if (d.audio && this.audio.has(d.audio.shot[0])) this.audio.playGunshot(d.audio);
     else if (d.cls === 'sniper') this.audio.sniperShot(d.sounds.shot, 'shot_bolt3_near', 'shot_bolt3_far');
     else this.audio.play(d.sounds.shot, { vol: d.sounds.shotVol ?? 0.9, rateVar: 0.035, reverb: d.cls === 'pistol' ? 0.2 : 0.3 });

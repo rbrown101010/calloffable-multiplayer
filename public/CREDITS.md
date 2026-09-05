@@ -51,3 +51,7 @@ This is a fan-made, non-commercial tribute to the Call of Duty: Modern Warfare 2
 
 ## Local combat additions
 - The complete AK model, red-dot optic, frag hand geometry, Raven motorcycle, helicopter, outposts and weapon preview renders are authored in this repository. The original unused AK grip asset attribution is retained above.
+
+## Skyline Assault additions
+- M14, M249, G36C, P90, Vector, MP7, RPG-7 and M32 geometry, holographic optic, support aircraft, central skyscraper, elevator, hill bunker and weapon preview renders are authored in this repository. No Call of Duty models or textures were copied.
+- Design references: Activision's Modern Warfare Killstreaks guide (movable gunship and explosive weapons), and official Highrise/Afghan/Incline map guides (elevation, alternate routes and covered crossings). These informed original mechanics and layout.

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Modern Singularity 2</title>
-  <meta name="description" content="Modern Singularity 2. Ten loadouts, tactical enemies, ATVs, motorcycles and 16-player invite-only multiplayer with voice chat. Deploy into the sprawling Sable Reach battlefield." />
+  <meta name="description" content="Modern Singularity 2. Custom loadouts, tactical enemies, ATVs, motorcycles and 16-player invite-only multiplayer with voice chat. Deploy into the sprawling Sable Reach battlefield." />
   <meta property="og:title" content="Modern Singularity 2" />
   <meta property="og:description" content="Own the ridgeline. Bring your squad. A cinematic browser FPS with tactical enemies, ATV roadkills and private multiplayer." />
   <meta property="og:type" content="website" />
@@ -29,21 +29,21 @@
 
   <!-- MAIN MENU -->
   <div id="menu" class="screen hidden">
-    <header class="menu-nav"><a class="wordmark" href="/">MODERN SINGULARITY <span class="brand-number">2</span></a><span class="nav-current">OPERATIONS</span><span class="nav-build">QUARRY RUN <i>02.1</i></span></header>
+    <header class="menu-nav"><a class="wordmark" href="/">MODERN SINGULARITY <span class="brand-number">2</span></a><span class="nav-current">OPERATIONS</span><span class="nav-build">SKYLINE ASSAULT <i>03.0</i></span></header>
     <div class="menu-layout">
       <section class="mission-panel">
         <div class="eyebrow"><span class="live-dot"></span> <span data-map-name>SABLE REACH</span> / OPERATIONS</div>
         <h1 class="operation-title game-logo" aria-label="Modern Singularity 2"><span>MODERN</span>SINGULARITY <b>2</b></h1>
         <p class="mission-copy">Take the ridgeline. Own the upper routes.<br>Hit 45 km/h. Turn your ATV into a weapon.</p>
-        <div class="map-card"><img id="map-preview" alt="Overhead tactical map"/><div class="map-card-caption"><span>TACTICAL OVERVIEW</span><b>6 SECTORS</b></div></div>
+        <div class="map-card"><img id="map-preview" alt="Overhead tactical map"/><div class="map-card-caption"><span>TACTICAL OVERVIEW</span><b>8 SECTORS</b></div></div>
         <label class="section-label" for="map-select">BATTLEFIELD</label>
-        <select id="map-select"><option value="sable">SABLE REACH · 240 × 240 M</option><option value="rust">RUST · CLASSIC 96 × 96 M</option></select>
+        <select id="map-select"><option value="sable">SABLE REACH · 300 × 300 M</option><option value="rust">RUST · CLASSIC 96 × 96 M</option></select>
         <div class="section-label">SOLO MATCH</div>
         <div class="menu-sub" id="menu-sub">7 ENEMIES · FIRST TO 20 KILLS · 10:00</div>
         <div class="score-row"><input aria-label="Solo score limit" id="opt-score" type="range" min="1" max="30" step="1" value="20"><div id="opt-score-v" class="score-v">20</div><span class="score-l">KILLS</span></div>
         <div class="ctl-row"><button class="ctl-btn" data-diff="recruit">RECRUIT</button><button class="ctl-btn" data-diff="regular">REGULAR</button><button class="ctl-btn" data-diff="veteran">VETERAN</button></div>
       </section>
-      <section class="armory-panel"><div class="panel-top"><div><div class="eyebrow">CHOOSE YOUR APPROACH</div><h2>YOUR LOADOUT</h2></div><span class="count-chip">10</span></div><div id="loadouts"></div><div class="armory-note"><span>01—10</span> Switch your primary and secondary in the field with <b>Q</b>.</div></section>
+      <section class="armory-panel"><div class="panel-top"><div><div class="eyebrow">CHOOSE YOUR APPROACH</div><h2>YOUR LOADOUT</h2></div><span class="count-chip">15</span></div><div id="loadouts"></div><div class="armory-note"><span>15 WEAPONS</span> Switch your primary and secondary in the field with <b>Q</b>.</div></section>
       <aside class="menu-right"><div id="loadout-detail"></div><div class="control-panel"><div class="section-label">INPUT DEVICE</div><div class="ctl-row"><button class="ctl-btn" data-control="mouse">MOUSE</button><button class="ctl-btn" data-control="trackpad">TRACKPAD</button></div><div class="controls">
         <div><b>WASD</b>MOVE</div><div><b>SHIFT</b>SPRINT</div><div><b>C</b>CROUCH / SLIDE</div><div><b>SPACE</b>JUMP</div><div class="ctl-mouse"><b>LMB / RMB</b>FIRE / AIM</div><div class="ctl-trackpad"><b>F / E</b>FIRE / AIM</div><div><b>R / G</b>RELOAD / FRAG</div><div><b>3 / 4 / 5</b>KILLSTREAK REWARDS</div><div><b>E</b>ENTER / EXIT VEHICLE</div><div><b>TAB</b>SCOREBOARD</div></div></div></aside>
     </div>
@@ -55,11 +55,11 @@
       <div id="join-fields"><div class="lobby-entry-modes"><button id="lobby-mode-join" class="btn-secondary" aria-pressed="true">JOIN A LOBBY</button><button id="lobby-mode-host" class="btn-secondary" aria-pressed="false">CREATE LOBBY · OWNER</button></div><p id="invite-hint" class="lobby-note"></p><label for="callsign">YOUR CALLSIGN</label><input id="callsign" maxlength="16" autocomplete="nickname" placeholder="OPERATOR"/><label id="invite-code-label" for="invite-code">INVITATION CODE</label><input id="invite-code" type="password" autocomplete="off" placeholder="Paste your code or open an invite link"/><button id="lobby-join" class="btn-primary">JOIN PRIVATE LOBBY <span>↗</span></button><p class="lobby-note">An invitation from the owner is required. Your microphone stays off until you enable it.</p></div>
       <div id="lobby-session" class="hidden"><div class="roster-head"><span id="lobby-count">0 / 16 OPERATORS</span><button id="lobby-invite" class="text-btn">COPY INVITE LINK ↗</button></div><div id="lobby-roster"></div>
         <div class="lobby-map"><label for="lobby-map">MATCH MAP</label><select id="lobby-map"><option value="sable">SABLE REACH — LARGE</option><option value="rust">RUST — SMALL</option></select><p id="lobby-map-note" class="lobby-note">The host chooses the map. Everyone loads it automatically.</p></div><div class="lobby-capacity"><label for="lobby-capacity">PLAYER LIMIT</label><select id="lobby-capacity"><option value="2">2 PLAYERS</option><option value="3">3 PLAYERS</option><option value="4">4 PLAYERS</option><option value="5">5 PLAYERS</option><option value="6">6 PLAYERS</option><option value="7">7 PLAYERS</option><option value="8">8 PLAYERS</option><option value="9">9 PLAYERS</option><option value="10">10 PLAYERS</option><option value="11">11 PLAYERS</option><option value="12">12 PLAYERS</option><option value="13">13 PLAYERS</option><option value="14">14 PLAYERS</option><option value="15">15 PLAYERS</option><option value="16" selected>16 PLAYERS</option></select><p id="lobby-capacity-note" class="lobby-note"></p></div><div id="host-settings" class="lobby-settings"><label>SCORE LIMIT<select id="lobby-limit"><option>10</option><option selected>20</option><option>30</option></select></label><label>BOT FILL<select id="lobby-bots"><option value="0">HUMANS ONLY</option><option value="3">UP TO 3 BOTS</option><option value="7" selected>UP TO 7 BOTS</option></select></label></div>
-        <button id="lobby-class" class="btn-secondary">CHOOSE CLASS</button><div class="voice-row"><button id="lobby-mic" class="btn-secondary">ENABLE MICROPHONE</button><label><input type="checkbox" id="voice-ptt"/> PUSH TO TALK <b>V</b></label></div><div class="lobby-actions"><button id="lobby-ready" class="btn-secondary">READY UP</button><button id="lobby-start" class="btn-primary">START MATCH</button><button id="lobby-resume" class="btn-primary hidden">RETURN TO MATCH</button></div><p class="lobby-note">Pick your class → Ready up → The host starts. Joining a match in progress deploys you automatically. Keep the host’s game tab visible. Mic is off until enabled.</p><button id="lobby-leave" class="text-btn">LEAVE LOBBY</button><button id="lobby-end" class="text-btn hidden">END LOBBY FOR EVERYONE</button>
+        <button id="lobby-class" class="btn-secondary">CUSTOMIZE LOADOUT</button><div class="voice-row"><button id="lobby-mic" class="btn-secondary">ENABLE MICROPHONE</button><label><input type="checkbox" id="voice-ptt"/> PUSH TO TALK <b>V</b></label></div><div class="lobby-actions"><button id="lobby-ready" class="btn-secondary">READY UP</button><button id="lobby-start" class="btn-primary">START MATCH</button><button id="lobby-resume" class="btn-primary hidden">RETURN TO MATCH</button></div><p class="lobby-note">Pick your weapons → Ready up → The host starts. Joining a match in progress deploys you automatically. Keep the host’s game tab visible. Mic is off until enabled.</p><button id="lobby-leave" class="text-btn">LEAVE LOBBY</button><button id="lobby-end" class="text-btn hidden">END LOBBY FOR EVERYONE</button>
       </div><div id="lobby-status" role="status" aria-live="polite"></div>
     </div>
   </div>
-  <div id="online-bar" class="hidden"><span class="live-dot"></span><span id="online-status">PRIVATE LOBBY</span><button id="online-mic">MIC OFF</button><button id="online-class">CLASS [L]</button><button id="lobby-return">LOBBY</button></div>
+  <div id="online-bar" class="hidden"><span class="live-dot"></span><span id="online-status">PRIVATE LOBBY</span><button id="online-mic">MIC OFF</button><button id="online-class">LOADOUT [L]</button><button id="lobby-return">LOBBY</button></div>
   <div id="map-transition" class="screen hidden" role="status" aria-live="polite"><div class="lobby-box"><div class="eyebrow">PRIVATE MATCH</div><h2 id="map-transition-title">LOADING MAP</h2><p id="map-transition-status">Your lobby and voice chat stay connected.</p><button id="map-retry" class="btn-secondary hidden">RETRY LOADING</button><button id="map-leave" class="text-btn">LEAVE LOBBY</button></div></div>
   <!-- HUD -->
   <div id="hud" class="hidden"><div id="sector-label">REFINERY</div><div id="stance-indicator"><span id="stance-label">STANDING</span><div><i id="stamina-fill"></i></div></div>
@@ -131,10 +131,12 @@
     </div>
   </div>
 
-  <div id="chopper-view" class="hidden"><div class="chopper-label">CHOPPER GUNNER <b id="chopper-time">25s</b><small>MOUSE TO AIM · CLICK / F TO FIRE · E TO EXIT<br>Your operator remains vulnerable on the ground.</small></div><div class="chopper-reticle">＋</div></div>
+  <div id="elevator-hint" class="hidden"></div><div id="elevator-panel" class="hidden"><div class="elevator-card"><button id="elevator-close" aria-label="Close floor selector">×</button><small>SINGULARITY CENTRAL / EXPRESS LIFT</small><h2>SELECT FLOOR</h2><p id="elevator-current"></p><div id="elevator-floors"></div></div></div>
+  <div id="vehicle-aim" class="hidden">⊕</div>
+  <div id="chopper-view" class="hidden"><div class="chopper-label">CHOPPER GUNNER <b id="chopper-time">35s</b><small>WASD TO FLY · SPACE / CTRL ALTITUDE · MOUSE AIM<br>CLICK / F CANNON · RIGHT CLICK ROCKETS · E EXIT<br>Your operator remains vulnerable on the ground.</small></div><div class="chopper-reticle">＋</div></div>
   <div id="death-replay" class="hidden" aria-label="Kill replay">
     <div class="death-replay-top"><div class="eyebrow">KILLCAM · REPLAY</div><h2 id="death-replay-killer"></h2><div id="death-replay-weapon"></div></div><div class="death-replay-reticle">+</div>
-    <div class="death-replay-bottom"><div id="death-replay-time"></div><div class="death-replay-progress"><i id="death-replay-fill"></i></div><div class="death-replay-actions"><button id="death-replay-skip">ENTER / SPACE · SKIP</button><button id="death-replay-class">L · CHANGE CLASS</button></div></div>
+    <div class="death-replay-bottom"><div id="death-replay-time"></div><div class="death-replay-progress"><i id="death-replay-fill"></i></div><div class="death-replay-actions"><button id="death-replay-skip">ENTER / SPACE · SKIP</button><button id="death-replay-class">L · CUSTOMIZE LOADOUT</button></div></div>
   </div>
   <!-- FINAL KILLCAM -->
   <div id="killcam" class="hidden">
@@ -144,7 +146,7 @@
   </div>
 
   <div id="class-picker" class="screen hidden" role="dialog" aria-modal="true" aria-labelledby="class-title">
-    <div class="class-box"><div class="panel-top"><div><div class="eyebrow">YOUR OPERATOR</div><h2 id="class-title">CHOOSE CLASS</h2></div><button id="class-close" class="icon-btn" aria-label="Close class picker">×</button></div>
+    <div class="class-box"><div class="panel-top"><div><div class="eyebrow">YOUR OPERATOR</div><h2 id="class-title">CUSTOMIZE LOADOUT</h2></div><button id="class-close" class="icon-btn" aria-label="Close weapon selector">×</button></div>
       <p id="class-note" class="lobby-note"></p><div id="class-options"></div><p id="class-status" role="status" aria-live="polite"></p><button id="class-done" class="btn-primary">RETURN TO MATCH</button>
     </div>
   </div>

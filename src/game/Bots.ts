@@ -18,6 +18,7 @@ export const DEBUG = { freeze: new URLSearchParams(location.search).has('botfree
 
 export class Bot {
   role: 'flanker' | 'anchor' | 'rusher' | 'marksman' = 'flanker'; stance = false; now = 0; tacticT = 0;
+  deathStyle=0;
   life = 0; loadoutIdx = 0;
   id: number; name: string; loadout: Loadout; def: WeaponDef; mag: number; reserve: number; skill: number;
   body: RAPIER.RigidBody; collider: RAPIER.Collider; cc: RAPIER.KinematicCharacterController; hitHead: RAPIER.Collider; hitBody: RAPIER.Collider; hitLegs: RAPIER.Collider;
@@ -82,7 +83,7 @@ export class Bot {
     if (src) { this.deathDir.set(this.pos.x - src.x, 0, this.pos.z - src.z); if (this.deathDir.lengthSq() < 1e-4) this.deathDir.set(0, 0, 1); this.deathDir.normalize(); }
     this.onHurt?.();
     if (attacker && attacker !== this) { this.alertPos = attacker.pos ? attacker.pos.clone() : null; this.alertT = this.hurtT; if (!this.target) this.reactionT = Math.min(this.reactionT, 0.15); }
-    if (this.health <= 0) { this.health = 0; this.die(); this.onDeath?.(attacker, weapon, part === 'head'); return true; }
+    if (this.health <= 0) { this.health = 0;this.deathStyle=/FRAG|AIRSTRIKE|ROCKET|RPG|GL|GUNNER/.test(weapon)?5:(this.id+this.deaths)%5;this.die(); this.onDeath?.(attacker, weapon, part === 'head'); return true; }
     return false;
   }
 
@@ -97,7 +98,7 @@ export class Bot {
     if (!this.alive) {
       this.deathT += dt;
       if (this.deathT > 3.5) { P.setVisible(false); return; }
-      P.update(dt, { pos: this.pos, feetY: this.feetY, yaw: this.yaw, aimYaw: this.aimYaw, aimPitch: this.aimPitch, speed: 0, alive: false, deathT: this.deathT, deathDir: this.deathDir });
+      P.update(dt, { pos: this.pos, feetY: this.feetY, yaw: this.yaw, aimYaw: this.aimYaw, aimPitch: this.aimPitch, speed: 0, alive: false, deathT: this.deathT, deathDir: this.deathDir,deathStyle:this.deathStyle });
       return;
     }
     const sp = Math.hypot(this.vel.x, this.vel.z);

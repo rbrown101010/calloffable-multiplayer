@@ -46,7 +46,7 @@ function armIK(upper: THREE.Object3D, fore: THREE.Object3D, hand: THREE.Object3D
   const E2 = fore.getWorldPosition(_v[3]); pointBone(fore, hand, _v[0].subVectors(target, E2));
 }
 
-export interface PuppetState { pos: THREE.Vector3; feetY: number; yaw: number; aimYaw: number; aimPitch: number; speed: number; alive: boolean; deathT: number; deathDir?: THREE.Vector3; flinch?: number; crouch?: boolean; riding?: boolean; motorcycle?:boolean; }
+export interface PuppetState { pos: THREE.Vector3; feetY: number; yaw: number; aimYaw: number; aimPitch: number; speed: number; alive: boolean; deathT: number; deathStyle?:number; deathDir?: THREE.Vector3; flinch?: number; crouch?: boolean; riding?: boolean; motorcycle?:boolean; }
 
 /** An animated soldier body holding a weapon, driven by explicit state (used for bots, the player's shadow and killcam replays). */
 export class SoldierPuppet {
@@ -146,15 +146,22 @@ export class SoldierPuppet {
 
   update(dt: number, s: PuppetState) {
     if (!s.alive) {
-      const t = clamp(s.deathT / 0.7, 0, 1); const e = 1 - (1 - t) * (1 - t);
-      const dd = s.deathDir ?? new THREE.Vector3(Math.sin(s.yaw), 0, Math.cos(s.yaw));
-      this.model.position.set(s.pos.x, s.feetY - e * 0.15, s.pos.z); this.model.rotation.set(0, s.yaw + MODEL_YAW, 0);
-      // fall away from the shooter: rotate about the world axis perpendicular to the impact direction
-      this.model.rotateOnWorldAxis(new THREE.Vector3(dd.z, 0, -dd.x), -e * Math.PI / 2 * 0.95); this.model.rotateZ(e * 0.15);
-      this.setAnim('Idle', 1, dt); this.setAnim('Walk', 0, dt); this.setAnim('Run', 0, dt); this.mixer.update(dt * 0.3);
-      this.model.updateWorldMatrix(true, true); this.placeGun({ ...s, aimPitch: -0.6 + e * -0.6 }); this.gunPivot.position.y = Math.max(this.gunPivot.position.y - e * 0.9, s.feetY + 0.12);
+      const style=(s.deathStyle||0)%6,t=clamp(s.deathT/(style===3?1.15:.88),0,1),e=1-Math.pow(1-t,3),impact=Math.sin(t*Math.PI);
+      const dd=s.deathDir??new THREE.Vector3(Math.sin(s.yaw),0,Math.cos(s.yaw));
+      this.setAnim('Idle',1,dt);this.setAnim('Walk',0,dt);this.setAnim('Run',0,dt);this.mixer.update(dt*.2);
+      const spin=style===4?e*2.4:0,kneel=style===3?Math.sin(Math.min(1,t*1.6)*Math.PI/2)*.58:0;
+      this.model.position.set(s.pos.x+dd.x*(style===5?e*.65:0),s.feetY+.08+impact*(style===5?.55:.08)-kneel*(1-e),s.pos.z+dd.z*(style===5?e*.65:0));
+      this.model.rotation.set(0,s.yaw+MODEL_YAW+spin,0);
+      if(style===1||style===2)this.model.rotateZ((style===1?1:-1)*e*1.5);
+      else if(style===3)this.model.rotateX(e*1.48);
+      else this.model.rotateOnWorldAxis(new THREE.Vector3(dd.z,0,-dd.x),-e*1.5);
+      for(const {thigh,shin}of this.legs){thigh?.rotateX(style===3?-kneel*1.8:impact*.4);shin?.rotateX(style===3?kneel*2.4:impact*.8);}
+      this.bones.rArm?.rotateZ(-impact*(style===5?1.9:.65));this.bones.lArm?.rotateZ(impact*(style===4?1.8:.7));
+      this.bones.head?.rotateX(impact*.3);this.model.updateWorldMatrix(true,true);
+      this.placeGun({...s,aimPitch:-.6-e*.8});this.gunPivot.position.y=Math.max(s.feetY+.16,this.gunPivot.position.y-e*.7);this.gunPivot.rotateZ((style%2?1:-1)*e*.6);
       return;
     }
+
     const walk = s.riding ? 0 : clamp(s.speed / 3.2, 0, 1), run = s.riding ? 0 : clamp((s.speed - 3.2) / 3.2, 0, 1);
     this.setAnim('Idle', 1 - walk, dt); this.setAnim('Walk', walk * (1 - run), dt); this.setAnim('Run', run, dt);
     this.mixer.update(dt);
@@ -180,14 +187,14 @@ export class SoldierPuppet {
       });
     }
     this.placeGun(s);
-    this.gunPivot.visible=this.model.visible&&!s.riding;
+    this.gunPivot.visible=this.model.visible;
     if (B.rArm && B.rFore && B.rHand && B.lArm && B.lFore && B.lHand) {
       const right = _right.set(1, 0, 0).applyQuaternion(this.model.quaternion); const fwd = _fwd.set(0, 0, -1).applyQuaternion(this.model.quaternion);
       const tR = this.gunHolder.localToWorld(_tR.copy(this.gripR)); const tL = this.gunHolder.localToWorld(_tL.copy(this.gripL));
       if(s.riding){
         // Hands meet the handlebar grips, with the legs folded around the saddle.
         const q=this.model.quaternion;
-        tR.set(s.motorcycle?.29:.38,s.motorcycle?.11:-.01,s.motorcycle?-.66:-.42).applyQuaternion(q).add(new THREE.Vector3(s.pos.x,s.feetY+.9,s.pos.z));
+        // Right hand holds the forward-facing weapon; left hand steers.
         tL.set(s.motorcycle?-.29:-.38,s.motorcycle?.11:-.01,s.motorcycle?-.66:-.42).applyQuaternion(q).add(new THREE.Vector3(s.pos.x,s.feetY+.9,s.pos.z));
       }
       armIK(B.rArm, B.rFore, B.rHand, tR, _hint.set(0, -1, 0).addScaledVector(right, 0.6).addScaledVector(fwd, -0.25));

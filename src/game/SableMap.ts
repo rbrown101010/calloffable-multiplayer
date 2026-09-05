@@ -6,18 +6,19 @@ import { pbr, flat } from './Materials';
 import { fbm } from './Noise';
 import { smoothstep } from './util';
 
-/** 240 x 240 m refinery. Layout and decoration are deterministic on every client. */
+/** 300 x 300 m refinery. Layout and decoration are deterministic on every client. */
 export class SableMap extends RustMap {
   private static scenery=new Map<string,THREE.Group>();
   static async preload(){const loader=new GLTFLoader();await Promise.all(['namaqualand_rocks_01','old_military_crate','portable_generator','covered_car'].map(async id=>{const gltf=await loader.loadAsync('/models/scenery/'+id+'/'+id+'.gltf');this.scenery.set(id,gltf.scene);}));}
-  override bounds = 120;
+  override bounds = 150;
   private seed = 4815;
   private routePoints: THREE.Vector3[][] = [];
   private dust!: THREE.Points;
   private random() { this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0; return this.seed / 4294967296; }
   override groundHeight(x: number, z: number) {
     const r = Math.max(Math.abs(x), Math.abs(z));
-    return smoothstep(121, 177, r) * (19 + fbm(x * .022, z * .022, 4) * 24)
+    return smoothstep(151, 205, r) * (19 + fbm(x * .022, z * .022, 4) * 24)
+      + (1-smoothstep(5,43,Math.hypot(x+121,z+122)))*23
       + fbm(x * .27, z * .27, 2) * .035
       + (1-smoothstep(3,21,Math.hypot(x-36,z+84)))*6.5
       + (1-smoothstep(2,15,Math.hypot(x+44,z+81)))*4.8
@@ -48,10 +49,7 @@ export class SableMap extends RustMap {
     for(let x=-108;x<112;x+=10) B.box(M.white,[4,.018,.14],[x,.117,24],{collide:false,shadow:false});
     for(let z=-102;z<104;z+=10) B.box(M.white,[.14,.018,4],[57,.117,z],{collide:false,shadow:false});
     // Refinery core: distillation columns, pipe racks, accessible tower, turbine house.
-    this.buildTower(B,M);
-    // The original hatch faces the outer rail. Step west onto the interior deck instead.
-    this.ladders[0].center.x=2.7;this.ladders[0].halfW=.8;this.ladders[0].landing=new THREE.Vector3(1.05,10.5,.4);
-    this.routePoints.push([new THREE.Vector3(8.3,.1,-3.2),new THREE.Vector3(5.7,1.9,-3.2),new THREE.Vector3(2.6,3.62,-3.2),new THREE.Vector3(.7,3.62,-2),new THREE.Vector3(-2.35,3.62,.6),new THREE.Vector3(-2.35,5.3,-1.6),new THREE.Vector3(-2.35,7.02,-3.9),new THREE.Vector3(.7,7.02,-2)]);
+    this.skyscraper(B,M);
     for(const [x,z,r,h] of [[-23,-16,3.2,18],[-34,-18,2.5,24],[-44,-15,2.8,14],[-25,-36,3.7,12]]) {
       B.cyl(M.steel,r,h,[x,h/2,z],{tile:2,seg:28});
       B.cyl(M.steelDark,r+.22,.22,[x,.15,z],{seg:28});
@@ -66,8 +64,8 @@ export class SableMap extends RustMap {
       for(const zz of[-1,1])B.box(M.steelDark,[r*2+.6,.7,.12],[x,deck+.35,z+zz*(r+.3)],{surface:'metal'});
       B.box(M.steelDark,[.12,.7,r*2+.6],[x+r+.3,deck+.35,z],{surface:'metal'});
     }
-    for(const z of [-10,-8,-6]) B.cyl(M.pipe,.24,58,[-27,4.4,z],{rot:[0,0,Math.PI/2],seg:10,collide:false});
-    for(let x=-52;x<0;x+=10){B.box(M.steelDark,[.3,4.6,.3],[x,2.3,-8]);B.box(M.steelDark,[.3,.25,7],[x,4.4,-8]);}
+    for(const z of [-10,-8,-6]) B.cyl(M.pipe,.24,36,[-37,4.4,z],{rot:[0,0,Math.PI/2],seg:10,collide:false});
+    for(let x=-52;x< -16;x+=10){B.box(M.steelDark,[.3,4.6,.3],[x,2.3,-8]);B.box(M.steelDark,[.3,.25,7],[x,4.4,-8]);}
     this.garage(B,M,22,-15); this.garage(B,M,-29,9);
     this.sign('01 / REFINERY',-4,3.3,13,0,5);
     this.sign('SABLE ENERGY',-34,12.5,-14.99,0,6.5);
@@ -127,7 +125,9 @@ export class SableMap extends RustMap {
       B.box(M.plywood,[1.4,1.4,1.4],[x+4.5,.7,z-1],{rot:[0,.25,0]});
     }
     // Perimeter blast wall, distant mesas and foreground stones.
-    for(const [x,z,w,d] of [[0,-120,242,1],[0,120,242,1],[-120,0,1,242],[120,0,1,242]]) B.box(M.concrete,[w,3.5,d],[x,1.75,z]);
+    for(const [x,z,w,d] of [[0,-150,302,1],[0,150,302,1],[-150,0,1,302],[150,0,1,302]]) B.box(M.concrete,[w,3.5,d],[x,1.75,z]);
+    // Raised perimeter follows the new hill, so the summit cannot bypass the arena boundary.
+    for(let p=-147;p< -78;p+=6)for(const [x,z,w,d]of [[p,-150,6.1,1],[-150,p,1,6.1]]){const h=this.groundHeight(x,z);if(h>.15)B.box(M.concrete,[w,h+5,d],[x,(h+5)/2,z]);}
 
     const pebbleGeo=new THREE.DodecahedronGeometry(1,0),pebbles=new THREE.InstancedMesh(pebbleGeo,M.rock3,550),dummy=new THREE.Object3D();
     for(let i=0;i<550;i++){const x=(this.random()-.5)*235,z=(this.random()-.5)*235,s=.05+this.random()*.2;dummy.position.set(x,this.groundHeight(x,z),z);dummy.scale.set(s,s*.45,s*.7);dummy.rotation.set(this.random()*6,this.random()*6,0);dummy.updateMatrix();pebbles.setMatrixAt(i,dummy.matrix);} pebbles.receiveShadow=true;this.group.add(pebbles);
@@ -137,7 +137,7 @@ export class SableMap extends RustMap {
       if(x<100){ const pts=[new THREE.Vector3(x,7.6,34),new THREE.Vector3(x+13,6.7,34),new THREE.Vector3(x+26,7.6,34)];const c=new THREE.CatmullRomCurve3(pts);B.custom(M.cable,new THREE.TubeGeometry(c,10,.022,4,false),new THREE.Matrix4(),false); }
     }
     this.sign('SABLE REACH  /  RESTRICTED ZONE',0,2.7,119.45,Math.PI,14);
-    this.environmentDetail(B,M);this.adventureRoutes(B,M);this.combatExpansion(B,M);this.scannedScenery();
+    this.skylineDistrict(B,M);this.environmentDetail(B,M);this.adventureRoutes(B,M);this.combatExpansion(B,M);this.scannedScenery();
     B.finish();
     this.physics.step(1/60);
     this.navigation();
@@ -246,7 +246,7 @@ export class SableMap extends RustMap {
   private environmentDetail(B:Builder,M:Record<string,THREE.Material>){
     // Steel lattice on the freight gantry, service ducts and generator enclosures.
     for(const z of [-90,-78])for(let x=70;x<110;x+=5){B.box(M.steelDark,[5.65,.14,.14],[x+2.5,15.3,z],{rot:[0,0,.38],collide:false});B.box(M.yellow,[5.65,.12,.12],[x+2.5,14.4,z],{rot:[0,0,-.38],collide:false});}
-    for(const [x,z]of [[-14,6],[14,-28],[-54,-28],[39,9],[86,30],[-49,74]]){
+    for(const [x,z]of [[-19,5],[14,-28],[-54,-28],[39,9],[86,30],[-49,74]]){
       B.box(M.concreteFloor,[5,.24,3.5],[x,.12,z]);B.box(M.greenMetal,[3.4,1.8,1.7],[x,1.14,z]);
       for(let i=0;i<13;i++)B.box(M.steelDark,[.05,1.1,.06],[x-1.3+i*.2,1.2,z+.89],{collide:false});
       B.cyl(M.steelDark,.12,2.6,[x+1,2.7,z],{seg:8});B.box(M.yellow,[.6,.4,.035],[x-1,1.5,z+.91],{collide:false});
@@ -309,6 +309,69 @@ export class SableMap extends RustMap {
     }
     this.sign('LONG SIGHTLINE / SERVICE ROAD',-42,2.8,18,0,5);
   }
+  /** Eight connected floors. The western stairwell and lift shaft remain open through every slab. */
+  private skyscraper(B:Builder,M:Record<string,THREE.Material>){
+    const H=4.2;
+    for(let floor=0;floor<8;floor++){
+      const y=.3+floor*H;
+      // Main floor wraps around the 4 x 4 m lift shaft at (9,5).
+      B.box(M.concreteFloor,[14,.22,24],[0,y-.11,0]);
+      B.box(M.concreteFloor,[7,.22,15],[10.5,y-.11,-4.5]);
+      B.box(M.concreteFloor,[7,.22,5],[10.5,y-.11,9.5]);
+      B.box(M.concreteFloor,[3,.22,4],[12.5,y-.11,5]);
+      B.box(M.concreteFloor,[7,.22,6],[-10.5,y-.11,-9]);
+      B.box(M.concreteFloor,[7,.22,4],[-10.5,y-.11,10]);
+      // Vertical columns frame open firing windows; low sills provide real cover.
+      for(const x of[-14,-7,0,7,14])for(const z of[-12,12])B.box(M.steelDark,[.42,H,.5],[x,y+H/2,z]);
+      for(const side of[-1,1]){
+        for(const x of[-10.5,-3.5,3.5,10.5]){
+          if(floor>0||Math.abs(x)>4)B.box(M.facade,[6.6,.9,.35],[x,y+.45,side*12]);
+          B.box(M.facade,[6.6,1.1,.35],[x,y+H-.55,side*12]);
+          // Recessed glass panels alternate with genuinely open windows.
+          if((floor+Math.round(x))%2===0&&floor>0)B.box(M.window,[2.1,2.2,.08],[x-1.9,y+2,side*11.95]);
+        }
+        B.box(M.facade,[.3,.85,24],[side*14,y+.425,0]);B.box(M.facade,[.3,1.1,24],[side*14,y+H-.55,0]);
+        for(const z of[-8,-4,0,4,8])B.box(M.steelDark,[.4,H,.35],[side*14,y+H/2,z]);
+      }
+      // Lift rear and side walls, with an unobstructed front landing.
+      for(const x of[6.85,11.15])B.box(M.steelDark,[.25,H,4.5],[x,y+H/2,5]);
+      B.box(M.steelDark,[4.5,H,.25],[9,y+H/2,7.15]);
+      B.box(M.steelDark,[4.4,.7,.25],[9,y+3.85,2.85]);
+      this.sign('LIFT / FLOOR '+(floor+1),9,y+3.4,2.68,Math.PI,3);
+      // Interior rooms, low desks, and an offset wall prevent full-length floor camping.
+      B.box(M.facade,[.25,2.7,6],[-3,y+1.35,floor%2?4:-3]);
+      B.box(M.darkPlanks,[2.8,.9,1.1],[1,y+.45,floor%2?-6:6]);
+      B.box(M.plywood,[1.3,1.15,1.3],[5,y+.575,-7]);
+      this.sign(String(floor+1).padStart(2,'0')+' / '+['LOBBY','SECURITY','OPERATIONS','RESEARCH','COMMAND','OBSERVATION','EXECUTIVE','SKY LOUNGE'][floor],0,y+3.1,-11.75,0,5);
+      if(floor<7){
+        this.stair(B,M,-12,-6,y,0,y+H/2,12,2.6,'tower-up');
+        B.box(M.grate,[7,.18,2],[-10.5,y+H/2-.09,7]);
+        this.stair(B,M,-8.5,6,y+H/2,180,y+H,12,2.6,'tower-return');
+        this.routePoints.push([new THREE.Vector3(-6,y,-7),new THREE.Vector3(-12,y,-6),new THREE.Vector3(-12,y+H/4,0),new THREE.Vector3(-12,y+H/2,6),new THREE.Vector3(-8.5,y+H/2,7),new THREE.Vector3(-8.5,y+H*.75,0),new THREE.Vector3(-8.5,y+H,-6),new THREE.Vector3(-6,y+H,-7)]);
+      }
+    }
+    B.box(M.concreteFloor,[28.8,.35,24.8],[0,34.1,0]);
+    for(const side of[-1,1]){for(const z of[-12,-6,0,6,12])B.box(M.steelDark,[.45,34,.45],[side*14.25,17,z],{collide:false});B.box(M.yellow,[.16,34,.16],[side*14.58,17,12.1],{collide:false});}
+    this.sign('SINGULARITY / CENTRAL',0,35.3,12.43,0,19);
+    // Accessible plaza approaches, with separate cover islands on each entrance.
+    for(const x of[-8,8])for(const z of[-17,17]){B.box(M.concrete,[5,.8,1.4],[x,.4,z]);B.box(M.darkPlanks,[4.6,.12,1.5],[x,.86,z]);}
+  }
+  private skylineDistrict(B:Builder,M:Record<string,THREE.Material>){
+    for(const [x,z]of [[-128,58],[-125,104],[-65,132],[28,132],[123,28],[124,-23]])this.commandBuilding(B,M,x,z);
+    // A 23 m corner hill with a switchback trail, summit bunker and covered flank.
+    const summit=this.groundHeight(-121,-122);
+    B.box(M.concreteFloor,[13,.3,11],[-121,summit+.15,-122]);
+    for(const x of[-127,-115])B.box(M.concrete,[.5,2.9,10],[x,summit+1.6,-122]);
+    B.box(M.concrete,[13,.3,11],[-121,summit+3.1,-122]);
+    for(const z of[-127,-117]){B.box(M.concrete,[4,1.1,.5],[-125,summit+.85,z]);B.box(M.concrete,[4,1.1,.5],[-117,summit+.85,z]);}
+    this.sign('RIDGELINE / OVERWATCH',-121,summit+2.5,-116.68,0,8);
+    const path=[[-78,-122],[-84,-140],[-112,-143],[-140,-135],[-143,-111],[-129,-96],[-111,-103],[-121,-122]];
+    for(let i=0;i<path.length-1;i++){const [x,z]=path[i],[xx,zz]=path[i+1],n=Math.ceil(Math.hypot(xx-x,zz-z)/3);for(let j=0;j<=n;j++){const t=j/n,px=x+(xx-x)*t,pz=z+(zz-z)*t,y=this.groundHeight(px,pz);B.box(M.asphalt,[4,.04,3.5],[px,y+.035,pz],{collide:false,shadow:false});if(j%3===0){B.box(M.concrete,[1.5,.8,.6],[px+2.8,y+.4,pz]);}}}
+    // Rooftop connector over the southern alley and sheltered vehicle crossing.
+    B.box(M.grate,[26,.22,3],[-9,4.72,115]);for(const x of[-21,3])B.box(M.steelDark,[.3,4.7,.3],[x,2.35,115]);
+    this.stair(B,M,-26,115,0,90,4.83,10,2.6,'district-bridge');this.stair(B,M,10,115,0,270,4.83,10,2.6,'district-bridge');
+    for(const [x,z]of [[-112,35],[-110,77],[-85,131],[-32,131],[61,130],[119,4],[126,-60]]){this.sandbags(B,M,x,z,0);B.box(M.plywood,[1.5,1.4,1.5],[x+5,.7,z+2]);}
+  }
   private commandBuilding(B:Builder,M:Record<string,THREE.Material>,x:number,z:number){
     const h=4.6,w=15,d=12;
     B.box(M.concreteFloor,[w,.2,d],[x,.1,z]); B.box(M.concreteFloor,[w+.5,.25,d+.5],[x,h,z]);
@@ -333,7 +396,7 @@ export class SableMap extends RustMap {
   }
   private navigation(){
     const cells=new Map<string,number>(), down=new THREE.Vector3(0,-1,0), dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-    for(let x=-116;x<=116;x+=4)for(let z=-116;z<=116;z+=4){
+    for(let x=-144;x<=144;x+=4)for(let z=-144;z<=144;z+=4){
       const hit=this.physics.raycast(new THREE.Vector3(x,this.groundHeight(x,z)+1.8,z),down,3,G.WORLD);if(!hit||hit.point.y>this.groundHeight(x,z)+.55)continue;
       const p=hit.point.clone();let block=false;
       for(const [dx,dz]of dirs)if(this.physics.raycast(p.clone().add(new THREE.Vector3(0,1,0)),new THREE.Vector3(dx,0,dz),.5,G.WORLD)){block=true;break;}
@@ -346,5 +409,5 @@ export class SableMap extends RustMap {
   }
   private makeDust(){const ps=new Float32Array(480*3);for(let i=0;i<480;i++)ps.set([(this.random()-.5)*240,1+this.random()*16,(this.random()-.5)*240],i*3);const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(ps,3));this.dust=new THREE.Points(g,new THREE.PointsMaterial({color:0xd9c9a0,size:.055,transparent:true,opacity:.2,depthWrite:false}));this.group.add(this.dust);}
   update(dt:number){if(this.dust){this.dust.position.x=(this.dust.position.x+dt*.3)%12;this.dust.position.z=Math.sin(performance.now()*.00004)*2;}}
-  sector(x:number,z:number){return x>62?'FREIGHT TERMINAL':z>42?(x< -55?'EXTRACTION YARD':'COMMAND COMPOUND'):x< -62?'TANK FARM':z< -55?'QUARRY / RIDGELINE':'REFINERY';}
+  sector(x:number,z:number){return Math.abs(x)<15&&Math.abs(z)<13?'SINGULARITY TOWER':x< -95&&z< -95?'RIDGELINE OVERWATCH':x>62?'FREIGHT TERMINAL':z>42?(x< -55?'EXTRACTION YARD':'COMMAND COMPOUND'):x< -62?'TANK FARM':z< -55?'QUARRY / RIDGELINE':'REFINERY';}
 }

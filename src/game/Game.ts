@@ -1,3 +1,5 @@
+import { Elevator } from './Elevator';
+import { Ordnance } from './Ordnance';
 import { Killstreaks } from './Killstreaks';
 import { DeathReplay } from './DeathReplay';
 import { Vehicles, VEHICLE_WEAPON } from './Vehicles';
@@ -13,7 +15,7 @@ import { RustMap } from './Map';
 import { Player } from './Player';
 import { Effects } from './Effects';
 import { ViewModel, Bullets, Gunplay, VIEW_LAYER, loadWeaponModel, GunEvent, EntityHit } from './Weapons';
-import { WEAPONS, LOADOUTS, Loadout, WeaponDef } from './WeaponDefs';
+import { WEAPONS, LOADOUTS, Loadout, WeaponDef, Equipment, validateEquipment, equipmentLoadout, equipmentLabel, PRIMARY_WEAPONS, SECONDARY_WEAPONS } from './WeaponDefs';
 import { BotManager, Bot } from './Bots';
 import { HUD, ScoreRow } from './HUD';
 import { Grenades } from './Grenades';
@@ -28,10 +30,10 @@ const SOUNDS: Record<string, string> = Object.fromEntries(SOUND_NAMES.map((n) =>
 const BOT_NAMES = ['GHOST', 'ROACH', 'SOAP', 'PRICE', 'MEAT', 'ROYCE', 'OZONE'];
 const BOT_SKILL = [0.55, 0.72, 0.88, 0.8, 0.5, 0.66, 0.76];
 const MATCH_TIME = 600;
-const weaponPreview=(id:string)=>`<img class="weapon-preview" src="/images/weapons/${({scarScout:'scarh',akSupport:'ak47',mp5Recon:'mp5'} as Record<string,string>)[id]||id}.png" alt="${WEAPONS[id].name}" width="640" height="210"/>`;
+const weaponPreview=(id:string)=>`<img class="weapon-preview" src="/images/weapons/${id}.png" alt="${WEAPONS[id].name}" width="640" height="210"/>`;
 
 export type MapId = 'sable' | 'rust';
-type Arena = { map:RustMap;vehicles:Vehicles;items:FieldItems;colliders:number[] };
+type Arena = { map:RustMap;vehicles:Vehicles;items:FieldItems;elevator:Elevator;colliders:number[] };
 type State = 'loading' | 'menu' | 'playing' | 'paused' | 'ended' | 'killcam';
 interface SnapEnt { x: number; y: number; z: number; feetY: number; yaw: number; aimYaw: number; aimPitch: number; alive: boolean; speed: number; }
 interface Snap { t: number; p: SnapEnt & { eyeY: number; pitch: number; ads: number }; b: SnapEnt[]; }
@@ -41,9 +43,11 @@ interface Stats { name: string; kills: number; deaths: number; score: number; st
 export class Game {
   renderer!: THREE.WebGLRenderer; scene = new THREE.Scene(); camera!: THREE.PerspectiveCamera; weaponCam!: THREE.PerspectiveCamera;
   physics!: Physics; input!: Input; audio!: AudioManager; map!: RustMap; player!: Player; vm!: ViewModel; gunplay!: Gunplay; bullets!: Bullets; effects!: Effects; bots!: BotManager; hud!: HUD; grenades!: Grenades; post!: PostFX; sun!: THREE.DirectionalLight;
-  vehicles!: Vehicles; fieldItems!: FieldItems;
+  elevator!:Elevator;vehicles!: Vehicles; fieldItems!: FieldItems;
   online!: Online; mapName = 'SABLE REACH';
-  deathReplay!:DeathReplay;killstreaks!:Killstreaks;
+  ordnance!:Ordnance;deathReplay!:DeathReplay;killstreaks!:Killstreaks;
+  equipment:Equipment=validateEquipment(null);
+  get selectedLoadout(){return equipmentLoadout(this.equipment);}
   state: State = 'loading'; loadoutIdx = 0; time = 0; clock = new THREE.Clock();
   match = { timeLeft: MATCH_TIME, over: false };
   respawnT = 0; playerLastShot = -9; botLastShot = new Map<Bot, number>(); bestStreak = 0; stepSide = 0;
@@ -86,6 +90,7 @@ export class Game {
     this.vm = new ViewModel(this.camera);
     this.bullets = new Bullets(this.scene, this.physics, this.effects, this.audio); this.bullets.onEntityHit = (h) => this.onEntityHit(h);
     this.gunplay = new Gunplay(this.player, this.input, this.vm, this.bullets, this.effects, this.audio, (e) => this.onGunEvent(e));
+    this.ordnance=new Ordnance(this);
     this.grenades = new Grenades(this.scene, this.physics, this.effects, this.audio);
     this.grenades.onExplode = (pos, owner) => { const d = pos.distanceTo(this.player.eyePos); this.audio.explosion(pos, d); this.player.addShake(clamp(1.6 - d / 10, 0, 1.3)); if (d < 12) this.hud.flash(clamp(1 - d / 12, 0, 0.8)); this.bots.alert(pos, 60, owner, this.time); this.online?.explosion(pos); };
     setLoad(0.35, 'LOADING WEAPONS');
@@ -123,9 +128,9 @@ export class Game {
     let manifest: Record<string, string> = { ...SOUNDS };
     try { const extra: string[] = await (await fetch('/sounds/manifest.json')).json(); for (const n of extra) manifest[n] = `/sounds/${n}.mp3`; } catch {}
     await this.audio.load(manifest, (d, t) => setLoad(0.7 + 0.2 * d / t, `LOADING AUDIO ${d}/${t}`));
-    this.vehicles = new Vehicles(this); this.fieldItems = new FieldItems(this);
+    this.vehicles = new Vehicles(this); this.fieldItems = new FieldItems(this);this.elevator=new Elevator(this);
     const colliders:number[]=[];this.physics.world.forEachCollider(c=>{if((c.collisionGroups()>>>16)&(G.WORLD|G.VEHICLE))colliders.push(c.handle);});
-    this.arenas.set(this.mapId,{map:this.map,vehicles:this.vehicles,items:this.fieldItems,colliders});
+    this.arenas.set(this.mapId,{map:this.map,vehicles:this.vehicles,items:this.fieldItems,elevator:this.elevator,colliders});
     setLoad(0.92, 'COMPOSITING');
     this.post = setupPost(this.renderer, this.scene, this.camera, this.weaponCam, { ao: !this.params.has('noao') });
     this.renderMinimapBase();
@@ -185,7 +190,7 @@ export class Game {
     try {
       if(id==='sable'&&!this.arenas.has(id))await SableMap.preload();
       await this.setupSky(id);
-      this.bullets.clear();this.grenades.clear();this.effects.clear();
+      this.ordnance?.clear();this.bullets.clear();this.grenades.clear();this.effects.clear();
       this.vm.root.visible=false;this.playerPuppet?.setVisible(false);
       for(const b of [...this.bots.bots,...this.online.remotes.values()])b.puppet?.setVisible(false);
       const old=this.arenas.get(this.mapId)!;this.setArenaActive(old,false);
@@ -194,12 +199,12 @@ export class Game {
       if(!arena){
         const before=new Set<number>();this.physics.world.forEachCollider(c=>before.add(c.handle));
         this.map=id==='rust'?new RustMap(this.physics):new SableMap(this.physics);this.scene.add(this.map.build());
-        this.vehicles=new Vehicles(this);this.fieldItems=new FieldItems(this);
+        this.vehicles=new Vehicles(this);this.fieldItems=new FieldItems(this);this.elevator=new Elevator(this);
         const colliders:number[]=[];this.physics.world.forEachCollider(c=>{if(!before.has(c.handle))colliders.push(c.handle);});
-        arena={map:this.map,vehicles:this.vehicles,items:this.fieldItems,colliders};this.arenas.set(id,arena);
+        arena={map:this.map,vehicles:this.vehicles,items:this.fieldItems,elevator:this.elevator,colliders};this.arenas.set(id,arena);
       }
-      this.map=arena.map;this.vehicles=arena.vehicles;this.fieldItems=arena.items;this.setArenaActive(arena,true);
-      this.vehicles.reset();this.fieldItems.reset();this.player.setLadders(this.map.ladders);this.bots.setMap(this.map);
+      this.map=arena.map;this.vehicles=arena.vehicles;this.fieldItems=arena.items;this.elevator=arena.elevator;this.setArenaActive(arena,true);
+      this.vehicles.reset();this.fieldItems.reset();this.elevator.reset();this.player.setLadders(this.map.ladders);this.bots.setMap(this.map);
       this.player.teleport(this.map.spawns[0].pos);this.renderMinimapBase();this.playerPuppet?.setVisible(true);
       document.querySelectorAll('[data-map-name]').forEach(e=>e.textContent=this.mapName);
       el<HTMLSelectElement>('map-select').value=id;this.params.set('map',id);
@@ -208,7 +213,7 @@ export class Game {
     } finally {this.mapChanging=false;}
   }
   private setArenaActive(arena:Arena,active:boolean) {
-    arena.map.group.visible=active;
+    arena.map.group.visible=active;arena.elevator.group.visible=active;
     for(const handle of arena.colliders)this.physics.world.getCollider(handle)?.setEnabled(active);
     for(const v of arena.vehicles.list)v.model.visible=active;
     for(const i of arena.items.list)i.model.visible=active;
@@ -216,18 +221,17 @@ export class Game {
 
   // ------------------------------------------------------------------ UI
   private setupUI() {
-    const list = el('loadouts'); list.innerHTML = '';
-    LOADOUTS.forEach((lo, i) => {
-      const d = document.createElement('button'); d.type='button'; d.setAttribute('aria-label',lo.name+' loadout'); d.className = 'lo' + (i === this.loadoutIdx ? ' sel' : '');
-      d.innerHTML = `<div class="lo-num">${String(i+1).padStart(2,'0')}</div><div><div class="lo-name">${lo.name}</div><div class="lo-desc">${lo.desc}</div></div><div class="lo-tag">${lo.tag}</div><div class="loadout-guns">${weaponPreview(lo.primary)}${weaponPreview(lo.secondary)}</div>`;
-      d.addEventListener('click', () => { this.selectLoadout(i); this.audio.uiClick(); });
-      d.addEventListener('mouseenter', () => this.audio.uiHover());
-      list.appendChild(d);
-    });
-    for (const [i, lo] of LOADOUTS.entries()) {
-      const button = document.createElement('button'); button.className = 'lo'; button.dataset.classIndex = String(i);
-      button.innerHTML = `<div class="lo-num">${String(i+1).padStart(2,'0')}</div><div><div class="lo-name">${lo.name}</div><div class="lo-desc">${WEAPONS[lo.primary].name} + ${WEAPONS[lo.secondary].name}</div></div><div class="lo-tag">${lo.tag}</div><div class="loadout-guns">${weaponPreview(lo.primary)}${weaponPreview(lo.secondary)}</div>`;
-      button.onclick = () => { this.selectLoadout(i); this.audio.uiClick(); }; el('class-options').append(button);
+    try{this.equipment=validateEquipment(JSON.parse(localStorage.getItem('ms2-equipment')||'null'));}catch{}
+    for(const container of ['loadouts','class-options']){
+      const list=el(container);list.innerHTML='';
+      for(const slot of ['primary','secondary'] as const){
+        const section=document.createElement('section');section.className='armory-section';section.innerHTML=`<h3>${slot==='primary'?'PRIMARY WEAPON':'SECONDARY WEAPON'}</h3><p>${slot==='primary'?'Your primary determines movement speed, even with your secondary out.':'A real backup weapon. Switch with 2 or Q.'}</p>`;
+        const grid=document.createElement('div');grid.className='armory-grid';
+        for(const id of slot==='primary'?PRIMARY_WEAPONS:SECONDARY_WEAPONS){const def=WEAPONS[id],button=document.createElement('button');button.className='armory-weapon';button.dataset.weapon=id;button.dataset.slot=slot;button.setAttribute('aria-label',`${slot} ${def.name}`);
+          button.innerHTML=`${weaponPreview(id)}<b>${def.name}</b><span>${def.cls.toUpperCase()} · ${def.mag} ROUNDS${def.optic==='holographic'?' · HOLO':def.optic?' · RED DOT':''}</span>${slot==='primary'?`<small>${Math.round(def.speedMul/.68*100)}% SNIPER SPEED</small>`:''}`;
+          button.onclick=()=>this.selectEquipment(slot,id);grid.append(button);
+        }section.append(grid);list.append(section);
+      }
     }
     el('class-done').onclick = () => this.closeClassPicker();
     el('class-close').onclick = () => this.closeClassPicker();
@@ -273,20 +277,24 @@ export class Game {
     applyDiff();
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement)?.matches('input,textarea,select'))return;
-      if (!el('class-picker').classList.contains('hidden')) { if(e.code==='Escape'||e.code==='Enter')this.closeClassPicker(); else if(/^Digit[0-9]$/.test(e.code))this.selectLoadout((parseInt(e.code[5])+9)%10); return; }
+      if(this.elevator.open){if(e.code==='Escape'){e.preventDefault();this.elevator.close();}return;}
+      if (!el('class-picker').classList.contains('hidden')) { if(e.code==='Escape'||e.code==='Enter')this.closeClassPicker();return; }
       if (!el('lobby').classList.contains('hidden'))return;
       if(e.code==='KeyL'&&(this.state==='playing'||this.state==='paused')){this.openClassPicker();return;}
-      if (this.state === 'menu') { if (e.code === 'Enter') this.startMatch(); if (/^Digit[0-9]$/.test(e.code)) this.selectLoadout((parseInt(e.code[5]) + 9) % 10); }
+      if (this.state === 'menu') { if (e.code === 'Enter') this.startMatch();  }
       else if (this.state === 'paused' && e.code === 'Enter') this.resume();
       else if (this.state === 'ended' && e.code === 'Enter'&&!this.deathReplay?.active) { if(this.online?.connected)el('lobby').classList.remove('hidden');else this.showMenu(); }
     });
     el('capture-pointer').onclick=()=>this.input.lock();
     this.renderer.domElement.addEventListener('mousedown',()=>{if(this.state==='playing'&&!this.nolock&&!this.input.locked)this.input.lock();});
-    this.input.onLockChange = (locked) => { if (!locked && this.state === 'playing' && !this.nolock) this.pause(); };
+    this.input.onLockChange = (locked) => { if (!locked && this.state === 'playing' && !this.nolock && !this.elevator.open) this.pause(); };
     window.addEventListener('mousedown', () => { this.audio.unlock(); });
   }
-  private selectLoadout(i: number) { if(!Number.isInteger(i)||!LOADOUTS[i])return; this.loadoutIdx = i; document.querySelectorAll('#loadouts .lo').forEach((e, k) => e.classList.toggle('sel', k === i)); this.renderLoadoutDetail(); this.updateClassUI(); this.online?.selectClass(i); }
+  private selectLoadout(i:number){if(!LOADOUTS[i])return;this.equipment=validateEquipment(LOADOUTS[i]);this.refreshEquipment();}
+  selectEquipment(slot:'primary'|'secondary',id:string){const choices=slot==='primary'?PRIMARY_WEAPONS:SECONDARY_WEAPONS;if(!choices.includes(id))return;this.equipment=validateEquipment({...this.equipment,[slot]:id});this.refreshEquipment();this.audio.uiClick();}
+  private refreshEquipment(){localStorage.setItem('ms2-equipment',JSON.stringify(this.equipment));this.renderLoadoutDetail();this.updateClassUI();this.online?.selectClass(0);}
   openClassPicker() {
+    if(this.elevator.open)this.elevator.close();
     this.deathReplay?.stop();
     this.classReturnToLobby = !el('lobby').classList.contains('hidden');
     if(this.state==='playing')this.pause();
@@ -299,17 +307,17 @@ export class Game {
   }
   updateClassUI() {
     const active=this.state==='playing'||this.state==='paused';
-    const current=LOADOUTS[this.player?.loadoutIdx||0], next=LOADOUTS[this.loadoutIdx];
+    const current=equipmentLoadout(this.player?.equipment||this.equipment),next=this.selectedLoadout;
     el('class-status').textContent=active ? `CURRENT: ${current.name} · NEXT SPAWN: ${next.name}` : `SELECTED: ${next.name}`;
-    el('class-note').textContent=active ? 'Your new class equips automatically on your next respawn. You stay in this match and keep your score. The match continues while this menu is open.' : 'Choose a class, return to the lobby, then ready up. Both weapons and grenades are included.';
+    el('class-note').textContent=active ? 'Your selected weapons equip automatically on your next respawn. You stay in this match and keep your score. The match continues while this menu is open.' : 'Choose your primary and secondary, return to the lobby, then ready up. You get both weapons and two frags.';
     el('class-done').textContent=this.classReturnToLobby?'BACK TO LOBBY':active?'RETURN TO MATCH':'DONE';
-    document.querySelectorAll<HTMLElement>('[data-class-index]').forEach(b=>{const selected=Number(b.dataset.classIndex)===this.loadoutIdx;b.classList.toggle('sel',selected);b.setAttribute('aria-pressed',String(selected));});
-    el('lobby-class').textContent='CLASS · '+next.name+' · CHANGE';
+    document.querySelectorAll<HTMLElement>('[data-weapon][data-slot]').forEach(b=>{const selected=this.equipment[b.dataset.slot as 'primary'|'secondary']===b.dataset.weapon;b.classList.toggle('sel',selected);b.setAttribute('aria-pressed',String(selected));});
+    el('lobby-class').textContent='LOADOUT · '+next.name+' · CHANGE';
   }
   private renderLoadoutDetail() {
-    const lo = LOADOUTS[this.loadoutIdx]; const p = WEAPONS[lo.primary], s = WEAPONS[lo.secondary];
+    const lo = this.selectedLoadout; const p = WEAPONS[lo.primary], s = WEAPONS[lo.secondary];
     const bar = (label: string, v: number) => `<div class="stat"><span>${label}</span><i><b style="width:${Math.round(clamp(v, 0.05, 1) * 100)}%"></b></i><span>${Math.round(clamp(v, 0, 1) * 100)}</span></div>`;
-    const dmg = clamp(p.damage * p.pellets / 130, 0, 1), rof = clamp(p.rpm / 900, 0, 1), rng = clamp(p.falloffEnd / 90, 0, 1), mob = clamp((p.speedMul - 0.8) / 0.25, 0, 1), acc = clamp(1 - (p.adsSpread + p.hipSpread * 0.08), 0, 1);
+    const dmg = clamp(p.damage * p.pellets / 130, 0, 1), rof = clamp(p.rpm / 900, 0, 1), rng = clamp(p.falloffEnd / 90, 0, 1), mob = clamp((p.speedMul - 0.5) / 0.69, 0, 1), acc = clamp(1 - (p.adsSpread + p.hipSpread * 0.08), 0, 1);
     el('loadout-detail').innerHTML = `<div class="eyebrow">${lo.tag}</div><h3>${lo.name}</h3>
       ${weaponPreview(lo.primary)}<div class="ld-row"><span>PRIMARY</span><span>${p.name}</span></div>${weaponPreview(lo.secondary)}<div class="ld-row"><span>SECONDARY</span><span>${s.name}</span></div><div class="ld-row"><span>LETHAL</span><span>FRAG GRENADE ×${lo.lethal}</span></div>
       <div style="margin-top:14px">${bar('DAMAGE', dmg)}${bar('FIRE RATE', rof)}${bar('RANGE', rng)}${bar('MOBILITY', mob)}${bar('ACCURACY', acc)}</div>
@@ -321,7 +329,7 @@ export class Game {
   showMenu() {
     this.deathReplay?.reset();this.killstreaks?.reset();
     this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
-    el('class-picker').classList.add('hidden');this.input.reset();this.audio.setWind(0);this.bullets.clear();this.grenades.clear();
+    el('class-picker').classList.add('hidden');this.input.reset();this.audio.setWind(0);this.ordnance?.clear();this.bullets.clear();this.grenades.clear();
     this.state = 'menu'; el('menu').classList.remove('hidden'); el('pause').classList.add('hidden'); el('end').classList.add('hidden'); this.hud.hide();
     this.vm.root.visible = false; this.input.unlock(); this.kc = null; this.hud.hideKillcam(); this.playerPuppet?.setShadowOnly(true);
     for (const b of this.bots.bots) { if (b.alive) b.die(); b.puppet?.setVisible(false); b.respawnT = 1e9; }
@@ -334,14 +342,14 @@ export class Game {
     if(!this.nolock)this.input.lock();
     this.audio.unlock(); this.audio.startWind(); this.audio.setWind(this.settings.wind);
     el('menu').classList.add('hidden'); el('end').classList.add('hidden'); el('pause').classList.add('hidden');
-    this.bullets.clear();this.grenades.clear();this.vehicles.reset();this.fieldItems.reset();
+    this.ordnance?.clear();this.bullets.clear();this.grenades.clear();this.vehicles.reset();this.fieldItems.reset();this.elevator.reset();
     this.match.timeLeft = MATCH_TIME; this.match.over = false; this.bestStreak = 0;
     const P = this.player; P.kills = 0; P.deaths = 0; P.score = 0; P.streak = 0;
     for (const b of this.bots.bots) { b.kills = 0; b.deaths = 0; b.score = 0; b.streak = 0; b.respawnT = 0; }
     this.player.life = 0;
     if(!this.online?.connected || this.online.isHost)this.bots.spawnAll();
     else for(const b of this.bots.bots){b.alive=false;for(const c of [b.collider,b.hitHead,b.hitBody,b.hitLegs])c.setEnabled(false);b.puppet?.setVisible(false);}
-    (this.player as any).nades=LOADOUTS[this.loadoutIdx].lethal;
+    (this.player as any).nades=this.selectedLoadout.lethal;
     this.respawnPlayer(true, this.loadoutIdx, this.online?.connected&&!this.online.isHost?0:1);
     this.hud.show(); this.hud.setLethal(this.gunplay.lethals); this.hud.setTimer(this.match.timeLeft); this.hud.setScores(0, 0);
     this.uavUntil = -1; this.airTargeting = false; this.gunplay.blockFire = false; this.warn60 = this.warn30 = this.matchPointShown = false;
@@ -380,24 +388,24 @@ export class Game {
     for(const b of this.online?.connected?[...this.bots.bots.slice(0,Math.max(0,Math.min(this.online.world.bots,this.online.world.maxPlayers-this.online.peers.size))),...this.online.remotes.values()]:this.bots.bots) rows.push({ name: b.name, score: b.score, kills: b.kills, deaths: b.deaths, streak: b.streak, me: false });
     return rows.sort((a, b) => b.score - a.score || a.deaths - b.deaths);
   }
-  respawnPlayer(_first = false, loadout = this.loadoutIdx, life = this.player.life + 1, spawn?: {pos:THREE.Vector3;yaw:number}) {
+  respawnPlayer(_first = false, loadout = this.loadoutIdx, life = this.player.life + 1, spawn?: {pos:THREE.Vector3;yaw:number}, equipment:Equipment=this.equipment) {
     this.deathReplay?.stop();
     this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
     const index=LOADOUTS[loadout]?loadout:0;
     const s = spawn || this.bots.pickSpawn(this.player);
     this.input.reset();this.player.spawn(s.pos, s.yaw);this.player.loadoutIdx=index;this.player.life=life;
-    this.gunplay.setLoadout(LOADOUTS[index]);(this.player as any).nades=LOADOUTS[index].lethal;
+    this.player.equipment=validateEquipment(equipment);this.gunplay.setLoadout(equipmentLoadout(this.player.equipment));(this.player as any).nades=2;
     this.hud.setLethal(this.gunplay.lethals);this.vm.root.visible=true;this.hud.hideRespawn();this.hud.setHealth(100,100);this.updateClassUI();
   }
   private playerDied(attacker: any, weapon: string) {
     this.vehicles?.release(this.vehicles.self);this.vehicles?.detach();
-    this.hud.showRespawn(attacker && attacker !== this.player ? attacker.name : 'YOURSELF', weapon || ''); this.respawnT = 5; this.hud.setRespawnCount(5);
+    this.hud.showRespawn(attacker && attacker !== this.player ? attacker.name : 'YOURSELF', weapon || ''); this.respawnT = 6; this.hud.setRespawnCount(6);
     this.vm.root.visible = false; this.audio.setLowHealth(0); this.gunplay.reloading = false; this.gunplay.cooking = false; this.gunplay.throwing = false; this.gunplay.bolting = false;
   }
 
   // ------------------------------------------------------------------ events
   private onGunEvent(e: GunEvent) {
-    if (e.type === 'shot') { this.deathReplay?.recordShot(this.player,e.def.id);this.online?.connected && this.online.localShot(); this.playerLastShot = this.time; this.bots.alert(e.pos, 48, this.player, this.time); if(!this.online?.connected)this.shotLog.push({ t: this.time, owner: this.player }); }
+    if (e.type === 'shot') { this.deathReplay?.recordShot(this.player,e.def.id);if(this.online?.connected)this.online.localShot();else if(e.def.projectile)this.ordnance.launch(this.player,e.def.id); this.playerLastShot = this.time; this.bots.alert(e.pos, 48, this.player, this.time); if(!this.online?.connected)this.shotLog.push({ t: this.time, owner: this.player }); }
     else if (e.type === 'ammo') { const s = this.gunplay.slot; if (s) this.hud.setAmmo(s.mag, s.reserve, s.def.mag, this.gunplay.reloading); }
     else if (e.type === 'switch') { const other = this.gunplay.slots[1 - this.gunplay.cur]; this.hud.setWeapon(e.def.name, modeLabel(e.def), other ? other.def.name : ''); this.playerPuppet?.setWeapon(e.def); }
     else if (e.type === 'grenade') { if(this.online?.connected)this.online.grenade(e.pos,e.vel,e.fuse);else this.grenades.throw(e.pos, e.vel, e.fuse, this.player); this.hud.setLethal(this.gunplay.lethals); this.audio.weaponSwitch(); this.voice.operator('frag', 2); }
@@ -565,22 +573,25 @@ export class Game {
       if (n < this.countdownShown) { this.countdownShown = n; if (n >= 1) { this.hud.streak(String(n)); this.audio.countdownBeep(false); } }
       if (this.countdown <= 0) { this.hud.streak('GO'); this.audio.countdownBeep(true); this.bots.frozen = false; this.voice.announce('ffa', 3, 0); }
     }
-    const canControl = P.alive && !this.match.over && this.countdown <= 0 && this.state==='playing' && el('lobby').classList.contains('hidden');
+    this.elevator.update(dt,P.alive&&this.countdown<=0&&this.state==='playing'&&el('lobby').classList.contains('hidden')&&!this.killstreaks.controlling&&!P.mounted);
+    const canControl = !this.elevator.open && P.alive && !this.match.over && this.countdown <= 0 && this.state==='playing' && el('lobby').classList.contains('hidden');
     this.vehicles.update(dt,canControl&&!this.killstreaks.controlling);
     this.killstreaks.update(dt,canControl&&!P.mounted);
     const onFoot=canControl&&!P.mounted&&!this.killstreaks.controlling;
     gp.updateAim(onFoot);
-    if(!P.mounted)P.update(dt, { canControl:onFoot, canLook: !this.killstreaks.controlling && P.alive && !this.match.over && this.state==='playing' && el('lobby').classList.contains('hidden') && (this.input.locked||this.input.forceLocked), speedMul: def?.speedMul ?? 1, adsHeld: gp.adsHeld, adsFov: def?.adsFov ?? 60, adsTime: def?.adsTime ?? 0.25, firing: gp.firing });
-    gp.update(dt, onFoot);
+    if(!P.mounted)P.update(dt, { canControl:onFoot, canLook: !this.elevator.open && !this.killstreaks.controlling && P.alive && !this.match.over && this.state==='playing' && el('lobby').classList.contains('hidden') && (this.input.locked||this.input.forceLocked), speedMul: WEAPONS[P.equipment.primary].speedMul, adsHeld: gp.adsHeld, adsFov: def?.adsFov ?? 60, adsTime: def?.adsTime ?? 0.25, firing: gp.firing });
+    if(P.mounted){P.ads=0;gp.adsLatched=false;}
+    gp.update(dt, canControl&&!this.killstreaks.controlling);
     this.fieldItems.update(dt,onFoot);
     this.bullets.listener.copy(P.eyePos); this.bullets.listenerOwner = P; this.bullets.update(dt);
     if(!this.online?.connected||this.online.isHost)this.bots.update(dt, this.time);
     if(!this.online?.connected||this.online.isHost)this.grenades.update(dt, () => this.online?.connected?this.online.victims:this.bots.victims);
+    this.ordnance.update(dt);
     this.physics.step(dt);
     this.effects.update(dt, P.eyePos, this.time);
     this.audio.updateListener(this.camera); this.audio.update(dt);
     // player body (shadow) + killcam recorder
-    if (this.playerPuppet) this.playerPuppet.update(dt, { pos: P.pos, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, speed: P.speed, alive: P.alive, deathT: P.deathT, crouch: P.crouching, riding:P.mounted,motorcycle:this.vehicles.current?.kind==='motorcycle' });
+    if (this.playerPuppet) this.playerPuppet.update(dt, { pos: P.pos, feetY: P.feetY, yaw: P.yaw + Math.PI, aimYaw: P.yaw + Math.PI, aimPitch: P.pitch, speed: P.speed, alive: P.alive, deathT: P.deathT,deathStyle:P.deathStyle,deathDir:P.deathDir, crouch: P.crouching, riding:P.mounted,motorcycle:this.vehicles.current?.kind==='motorcycle' });
     this.snapTimer+=dt;
     if (!this.online?.connected && this.countdown <= 0 && this.snapTimer>=.05) {
       this.snapTimer=0;
@@ -605,6 +616,7 @@ export class Game {
     }
     // ---- HUD
     const scoped = !!def?.scope; const sp = gp.spread();
+    const vehicleAim=el('vehicle-aim');vehicleAim.classList.toggle('hidden',!P.mounted||!P.alive);if(P.mounted){const hit=this.physics.raycast(P.eyePos,P.forward,120,G.WORLD|G.HITBOX);const aim=(hit?.point||P.eyePos.clone().addScaledVector(P.forward,80)).clone().project(this.camera);vehicleAim.style.left=(aim.x*.5+.5)*100+'%';vehicleAim.style.top=(-aim.y*.5+.5)*100+'%';}
     this.hud.setCrosshair(sp, this.camera.fov, P.ads, !P.alive || P.mounted || P.sprinting || gp.reloading || gp.holstering || gp.drawing || gp.cooking, scoped);
     const scopeOn = scoped && P.ads > 0.82 && P.alive && !P.mounted;
     if (scopeOn) { const hit = this.physics.raycast(P.eyePos, P.forward, 400, G.WORLD | G.HITBOX); this.hud.setScope(true, hit ? hit.distance : null); } else this.hud.setScope(false, null);

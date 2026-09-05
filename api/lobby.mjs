@@ -35,16 +35,16 @@ export default async function handler(req,res){
     if(action==='status'||action==='start'||action==='end'){
       const [payload,mac]=String(body.access||'').split('.');
       let access;try{if(!equal(mac,sign(payload||'',LOBBY_HOST_KEY)))throw 0;access=JSON.parse(Buffer.from(payload,'base64url').toString());}catch{return res.status(403).json({error:'Your lobby access expired. Join again.'});}
-      if(!access.id||access.expiresAt<Date.now()||!current?.active||current.roomId!==access.roomId)return res.status(410).json({error:'This lobby has ended. Ask the owner for the new invitation.'});
+      if(!access.id||access.expiresAt<Date.now()||!current?.active||current.protocol!==6||current.roomId!==access.roomId)return res.status(410).json({error:'This lobby has ended. Ask the owner for the new invitation.'});
       if(action!=='status'&&(!access.owner||access.id!==current.ownerId))return res.status(403).json({error:'Only the owner can create, start, or end games.'});
       if(action==='end'){await db.transact(db.tx.lobbyControl[controlId].update({active:false}));return res.status(200).json({ended:true});}
       if(action==='start')return res.status(200).json({round:randomUUID()});
       // Use authenticated transport identities, never client-declared owner flags or IDs.
-      const presence=await db.rooms.getPresence('sable',current.roomId+'-match-v5');
+      const presence=await db.rooms.getPresence('sable',current.roomId+'-match-v6');
       const members=Object.values(presence).filter(p=>p?.user?.id&&p?.['peer-id']).map(p=>({peerId:p['peer-id'],id:p.user.id}));
       return res.status(200).json({ownerId:current.ownerId,members});
     }
-    if(action==='join'&&(!current?.active||!equal(String(body.key||''),current.inviteKey)))return res.status(403).json({error:'That invitation is no longer active. Ask the owner for the new lobby link.'});
+    if(action==='join'&&(!current?.active||current.protocol!==6||!equal(String(body.key||''),current.inviteKey)))return res.status(403).json({error:'That invitation is no longer active. Ask the owner for the new lobby link.'});
     const name=String(body.name||'').replace(/[^a-zA-Z0-9 _-]/g,'').trim().slice(0,16);
     if(!name)return res.status(400).json({error:'Enter your callsign first.'});
     let userId=randomUUID(),token;
@@ -53,7 +53,7 @@ export default async function handler(req,res){
     if(action==='create'){
       // A retried create request returns the same lobby instead of resetting it twice.
       if(!body.requestId||body.requestId!==current?.requestId||current.ownerId!==userId||!current.active){
-        current={roomId:randomUUID(),ownerId:userId,inviteKey:randomBytes(18).toString('base64url'),active:true,requestId:String(body.requestId||randomUUID()),createdAt:Date.now()};
+        current={protocol:6,roomId:randomUUID(),ownerId:userId,inviteKey:randomBytes(18).toString('base64url'),active:true,requestId:String(body.requestId||randomUUID()),createdAt:Date.now()};
         await db.transact(db.tx.lobbyControl[controlId].update(current));
       }
     }

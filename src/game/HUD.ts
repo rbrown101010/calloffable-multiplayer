@@ -63,9 +63,9 @@ export class HUD {
     this.ammoMag.textContent = mag.toString(); this.ammoRes.textContent = res.toString();
     this.ammoMag.classList.toggle('low', mag <= Math.max(1, Math.floor(magSize * 0.25)) && !reloading); this.ammoMag.classList.toggle('reloading', reloading);
   }
-  setStreaks(streak: number, uav: 'locked' | 'ready' | 'active', air: 'locked' | 'ready' | 'active', chopper: 'locked' | 'ready' | 'active' = 'locked', randomName = 'RANDOM REWARD') {
+  setStreaks(streak: number, uav: 'locked' | 'ready' | 'active', air: 'locked' | 'ready' | 'active', chopper: 'locked' | 'ready' | 'active' = 'locked', randomName = 'RANDOM REWARD', support:boolean[] = []) {
     const chip = (key: string, name: string, need: number, st: string) => `<div class="sk ${st}"><b>${key}</b><span>${name}</span><i>${st === 'locked' ? `${Math.min(streak, need)}/${need}` : st === 'ready' ? 'READY' : 'ACTIVE'}</i></div>`;
-    const html = chip('3', 'UAV', 3, uav) + chip('4', randomName, 5, air) + chip('5', 'CHOPPER GUNNER', 9, chopper);
+    const html = chip('3', 'UAV', 3, uav) + chip('4', randomName, 5, air) + chip('6','PRECISION STRIKE',6,support[0]?'ready':'locked')+chip('7','ATTACK HELI',7,support[1]?'ready':'locked')+chip('8','STEALTH BOMBER',8,support[2]?'ready':'locked')+chip('5', 'CHOPPER GUNNER', 9, chopper);
     if (html !== this.lastStreakHtml) { this.streaksEl.innerHTML = html; this.lastStreakHtml = html; }
   }
   setAmmoWarn(text: string | null) { if ((this.ammoWarn.textContent || '') !== (text || '')) this.ammoWarn.textContent = text || ''; }
@@ -99,7 +99,7 @@ export class HUD {
   /** Rotating radar centered on the player. */
   drawMinimap(pPos: THREE.Vector3, yaw: number, blips: RadarBlip[], time: number, uav = false) {
     const ctx = this.mmCtx, W = this.mmCanvas.width, H = this.mmCanvas.height, cx = W / 2, cy = H / 2;
-    const viewRadius = 34; const scale = (W / 2) / viewRadius; // px per meter
+    const viewRadius = uav?110:40; const scale = (W / 2) / viewRadius; // px per meter
     ctx.clearRect(0, 0, W, H);
     ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, W / 2 - 2, 0, Math.PI * 2); ctx.clip();
     ctx.fillStyle = '#1a1712'; ctx.fillRect(0, 0, W, H);
@@ -117,8 +117,8 @@ export class HUD {
       if (!b.alive || !(b.visible || uav)) continue;
       const dx = b.pos.x - pPos.x, dz = b.pos.z - pPos.z;
       const rx = dx * Math.cos(yaw) + dz * Math.sin(yaw); const rz = -dx * Math.sin(yaw) + dz * Math.cos(yaw);
-      const px = cx + rx * scale, py = cy + rz * scale; if (Math.hypot(px - cx, py - cy) > W / 2 - 6) continue;
-      ctx.fillStyle = '#ff3b2e'; ctx.shadowColor = '#ff3b2e'; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(px, py, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+      const distance=Math.hypot(rx,rz)*scale,edge=distance>W/2-9;if(edge&&!uav)continue;const k=edge?(W/2-9)/distance:1;const px=cx+rx*scale*k,py=cy+rz*scale*k;
+      ctx.fillStyle = '#ff3b2e'; ctx.shadowColor = '#ff3b2e'; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(px, py, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;const height=b.pos.y-pPos.y;if(Math.abs(height)>3){ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.fillText(height>0?'⌃':'⌄',px,py+(height>0?-7:14));}if(edge){ctx.strokeStyle='#ff9588';ctx.strokeRect(px-6,py-6,12,12);}
     }
     // view cone
     const cone = ctx.createRadialGradient(cx, cy, 0, cx, cy, W / 2); cone.addColorStop(0, 'rgba(255,255,255,0.28)'); cone.addColorStop(1, 'rgba(255,255,255,0)');
@@ -128,7 +128,7 @@ export class HUD {
     // sweep
     const a = (time * 1.2) % (Math.PI * 2); ctx.strokeStyle = 'rgba(240,160,48,0.35)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * W / 2, cy + Math.sin(a) * W / 2); ctx.stroke();
     ctx.restore();
-    if (uav) { ctx.fillStyle = '#f0a030'; ctx.font = 'bold 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('UAV', cx, H - 14); ctx.strokeStyle = 'rgba(240,160,48,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, W / 2 - 3, 0, Math.PI * 2); ctx.stroke(); }
+    if (uav) { ctx.fillStyle = '#f0a030'; ctx.font = 'bold 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('UAV · 110m', cx, H - 14); ctx.strokeStyle = 'rgba(240,160,48,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, W / 2 - 3, 0, Math.PI * 2); ctx.stroke(); }
     // compass
     const deg = ((-yaw * 180 / Math.PI) % 360 + 360) % 360; const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     this.compass.textContent = `${dirs[Math.round(deg / 45) % 8]} ${Math.round(deg).toString().padStart(3, '0')}°`;

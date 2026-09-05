@@ -1,3 +1,4 @@
+import {Equipment, DEFAULT_EQUIPMENT} from './WeaponDefs';
 import * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { Physics, G, cg } from './Physics';
@@ -25,11 +26,13 @@ export class Player {
   rig = new THREE.Object3D();
   camera: THREE.PerspectiveCamera;
   mounted = false;
+  equipment:Equipment={...DEFAULT_EQUIPMENT};
   loadoutIdx = 0; life = 0;
   grounded = false; wasGrounded = false; groundedTime = 0;
   sprinting = false; crouching = false; sliding = false; slideT = 0; slideDir = new THREE.Vector3();
   ads = 0; adsBlend = 0;
   climbing: Ladder | null = null; ladderExitT = 0;
+  deathStyle=0;deathDir=new THREE.Vector3(0,0,1);
   health = 100; maxHealth = 100; alive = true; lastDamage = -99; regenDelay = 4.2; regenRate = 38;
   fovBase = 90; fovCur = 90;
   speed = 0; moveDir = new THREE.Vector3(); wishDir = new THREE.Vector3();
@@ -73,7 +76,7 @@ export class Player {
 
   get feetY() { return this.pos.y - (this.crouching ? CAP_HH_CROUCH : CAP_HH_STAND) - CAP_R; }
   get eyePos() { return this.mounted ? this._seatEye.copy(this.pos).add(new THREE.Vector3(0,.15,0)) : this.rig.position; }
-  get forward() { return this._f.set(0, 0, -1).applyQuaternion(this.rig.quaternion); }
+  get forward() { if(this.mounted)return this._f.set(-Math.sin(this.yaw),0,-Math.cos(this.yaw));return this._f.set(0, 0, -1).applyQuaternion(this.rig.quaternion); }
   get right() { return this._r.set(1, 0, 0).applyQuaternion(this.rig.quaternion); }
   get flatForward() { return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); }
   get flatRight() { return new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw)); }
@@ -110,7 +113,7 @@ export class Player {
     this.health -= amount; this.lastDamage = performance.now() / 1000;
     this.addPunch(-amount * 0.0018, (Math.random() - 0.5) * amount * 0.002);
     this.onDamage?.(amount, from ?? (attacker && attacker.pos ? attacker.pos : null), attacker);
-    if (this.health <= 0) { this.health = 0; this.alive = false; this.ads = 0; this.deaths++; this.streak = 0; this.onDeath?.(attacker, weapon, part === 'head'); return true; }
+    if (this.health <= 0) { this.deathStyle=/FRAG|AIRSTRIKE|ROCKET|RPG|GL|GUNNER/.test(weapon)?5:(this.life+this.deaths)%5;const src=from||attacker?.pos;if(src)this.deathDir.copy(this.pos).sub(src).setY(0).normalize();this.health = 0; this.alive = false; this.ads = 0; this.deaths++; this.streak = 0; this.onDeath?.(attacker, weapon, part === 'head'); return true; }
     return false;
   }
 
@@ -303,7 +306,7 @@ export class Player {
     // ADS stays still until the player moves, fires, or takes a hit.
     // death camera: collapse to the ground and roll over
     let deathDrop = 0, deathRoll = 0, deathPitch = 0;
-    if (!this.alive) { this.deathT += dt; const t = Math.min(1, this.deathT / 1.1); const e = 1 - (1 - t) * (1 - t); deathDrop = e * (this.eyeCur - 0.35); deathRoll = e * 1.15; deathPitch = e * 0.35; }
+    if (!this.alive) { this.deathT += dt; const t = Math.min(1, this.deathT / 1.1); const e = 1 - (1 - t) * (1 - t); deathDrop = e * (this.eyeCur - 0.35); deathRoll = e * (this.deathStyle%2?-1:1)*.8; deathPitch=e*(this.deathStyle===3?-.35:.25); }
     // final rig transform
     const eye = this.feetY + this.eyeCur - this.landDip - deathDrop;
     this.rig.position.set(this.pos.x + this.bobX * 0.5 + shX, eye + this.bobY + shY, this.pos.z);

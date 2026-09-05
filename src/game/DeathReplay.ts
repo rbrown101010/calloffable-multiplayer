@@ -4,10 +4,11 @@ import { SoldierPuppet } from './Puppet';
 import { ViewModel, cloneLoadedWeapon } from './Weapons';
 import { WEAPONS } from './WeaponDefs';
 import { el, lerp, wrapAngle } from './util';
+import {G} from './Physics';
 import type { VehicleState } from './Vehicles';
 
-const FRAME_LIMIT=64,SHOT_LIMIT=512,INTERVAL=.1,LOOKBACK=3,HOLD=.35;
-type Pose={id:string;x:number;y:number;z:number;feet:number;yaw:number;pitch:number;speed:number;alive:boolean;crouch:boolean;riding:boolean;motorcycle:boolean;weapon:string;skin:number;ads:number;camera?:{p:number[];yaw:number;pitch:number}};
+const FRAME_LIMIT=64,SHOT_LIMIT=512,INTERVAL=.1,LOOKBACK=3,HOLD=.35,DEATH_DELAY=1.35;
+type Pose={id:string;x:number;y:number;z:number;feet:number;yaw:number;pitch:number;speed:number;alive:boolean;crouch:boolean;riding:boolean;motorcycle:boolean;weapon:string;skin:number;ads:number;deathStyle:number;deathDir:number[];camera?:{p:number[];yaw:number;pitch:number}};
 type Frame={t:number;poses:Pose[];vehicles:VehicleState[]};
 type Shot={t:number;id:string;weapon:string};
 type Death={killer:string;name:string;weapon:string;headshot:boolean;life:number;at:number};
@@ -24,6 +25,7 @@ export class DeathReplay {
   eye=new THREE.Vector3();private orientation=new THREE.Quaternion();private point=new THREE.Vector3();private riding=false;
   private rigPosition=new THREE.Vector3();private rigRotation=new THREE.Quaternion();private hidden:THREE.Object3D[]=[];
   get active(){return !!this.clip;}
+  get watchingDeath(){return !!this.pending&&!this.g.player.alive&&this.g.time-this.pending.at<DEATH_DELAY;}
 
   constructor(private g:Game){
     this.group.name='Death replay visuals';this.group.visible=false;g.scene.add(this.group);
@@ -46,7 +48,7 @@ export class DeathReplay {
     if(!force&&g.time<this.nextCapture)return;this.nextCapture=g.time+INTERVAL;
     const entities=[g.player,...g.bots.bots.filter(b=>b.alive),...(g.online?.connected?[...g.online.remotes.values()]:[])].slice(0,16);
     const vehicles=g.vehicles.snapshot();
-    const poses=entities.map(e=>{const local=e===g.player,id=this.id(e),b=e as any;return{id,x:e.pos.x,y:e.pos.y,z:e.pos.z,feet:e.feetY,yaw:local?g.player.yaw+Math.PI:b.aimYaw,pitch:local?g.player.pitch:b.aimPitch,speed:local?g.player.speed:Math.hypot(b.vel.x,b.vel.z),alive:e.alive,crouch:local?g.player.crouching:b.crouch,riding:vehicles.some(v=>v.driver===id),motorcycle:g.vehicles.list.find(v=>v.driver===id)?.kind==='motorcycle',weapon:local?g.gunplay.def.id:b.def.id,skin:local?0:b.id%4,ads:local?g.player.ads:b.netADS||0,camera:g.killstreaks.cameraFor(id)||undefined};});
+    const poses=entities.map(e=>{const local=e===g.player,id=this.id(e),b=e as any;return{id,x:e.pos.x,y:e.pos.y,z:e.pos.z,feet:e.feetY,yaw:local?g.player.yaw+Math.PI:b.aimYaw,pitch:local?g.player.pitch:b.aimPitch,speed:local?g.player.speed:Math.hypot(b.vel.x,b.vel.z),alive:e.alive,crouch:local?g.player.crouching:b.crouch,riding:vehicles.some(v=>v.driver===id),motorcycle:g.vehicles.list.find(v=>v.driver===id)?.kind==='motorcycle',weapon:local?g.gunplay.def.id:b.def.id,skin:local?0:b.id%4,deathStyle:b.deathStyle||0,deathDir:b.deathDir?.toArray()||[0,0,1],ads:local?g.player.ads:b.netADS||0,camera:g.killstreaks.cameraFor(id)||undefined};});
     this.frames[this.frameNext]={t:g.time,poses,vehicles};this.frameNext=(this.frameNext+1)%FRAME_LIMIT;this.frameCount=Math.min(FRAME_LIMIT,this.frameCount+1);
   }
   killedBy(killer:string,name:string,weapon:string,headshot:boolean,life=this.g.player.life){
@@ -57,8 +59,8 @@ export class DeathReplay {
     const g=this.g;
     if(this.pending){
       const d=this.pending;
-      if(g.player.life!==d.life||g.time-d.at>1||!['playing','paused','ended'].includes(g.state))this.pending=null;
-      else if(!g.player.alive){this.pending=null;if(['playing','ended'].includes(g.state)&&el('class-picker').classList.contains('hidden')&&el('lobby').classList.contains('hidden'))this.start(d);}
+      if(g.player.life!==d.life||g.time-d.at>DEATH_DELAY+1||!['playing','paused','ended'].includes(g.state))this.pending=null;
+      else if(!g.player.alive&&g.time-d.at>=DEATH_DELAY){this.pending=null;if(['playing','ended'].includes(g.state)&&el('class-picker').classList.contains('hidden')&&el('lobby').classList.contains('hidden'))this.start(d);}
     }
     const c=this.clip;if(!c)return;
     if(g.player.alive||g.player.life!==c.death.life||!['playing','ended'].includes(g.state)||g.mapChanging||!el('lobby').classList.contains('hidden')||!el('class-picker').classList.contains('hidden')){this.stop();return;}
@@ -75,7 +77,7 @@ export class DeathReplay {
     else if(killer.riding){this.eye.addScaledVector(this.point.set(Math.sin(killer.yaw),0,Math.cos(killer.yaw)),-4.8);this.eye.y+=1.8;this.orientation.setFromEuler(new THREE.Euler(-.2,killer.yaw+Math.PI,0,'YXZ'));}
     else this.orientation.setFromEuler(new THREE.Euler(killer.pitch,killer.yaw+Math.PI,0,'YXZ'));
     if(killer.weapon!==this.viewWeapon){const def=WEAPONS[killer.weapon],model=def&&(this.models.get(def.id)||cloneLoadedWeapon(def));if(model){this.models.set(def.id,model);this.vm.setWeapon(def,model);this.vm.drawT=1;this.viewWeapon=killer.weapon;}}
-    this.ghosts.forEach((p,i)=>{const id=c.actors[i],s=id&&sample(id);p.setVisible(!!s);if(!s)return;if(this.ghostsFor[i]!==id){p.setTint([0x76806a,0x9a957c,0x707c7f,0x94937b][s.skin]||0x76806a);this.ghostsFor[i]=id;}if(WEAPONS[s.weapon]&&p.def!==WEAPONS[s.weapon])void p.setWeapon(WEAPONS[s.weapon]);p.update(dt,{pos:this.point.set(s.x,s.y,s.z),feetY:s.feet,yaw:s.yaw,aimYaw:s.yaw,aimPitch:s.pitch,speed:s.speed,crouch:s.crouch,riding:s.riding,motorcycle:s.motorcycle,alive:s.alive,deathT:s.alive?0:Math.max(0,t-c.end)});});
+    this.ghosts.forEach((p,i)=>{const id=c.actors[i],s=id&&sample(id);p.setVisible(!!s);if(!s)return;if(this.ghostsFor[i]!==id){p.setTint([0x76806a,0x9a957c,0x707c7f,0x94937b][s.skin]||0x76806a);this.ghostsFor[i]=id;}if(WEAPONS[s.weapon]&&p.def!==WEAPONS[s.weapon])void p.setWeapon(WEAPONS[s.weapon]);p.update(dt,{pos:this.point.set(s.x,s.y,s.z),feetY:s.feet,yaw:s.yaw,aimYaw:s.yaw,aimPitch:s.pitch,speed:s.speed,crouch:s.crouch,riding:s.riding,motorcycle:s.motorcycle,alive:s.alive,deathStyle:s.deathStyle,deathDir:new THREE.Vector3().fromArray(s.deathDir),deathT:s.alive?0:Math.max(0,t-c.end)});});
     for(const v of b.vehicles){const model=this.vehicleModels.get(v.id);if(!model)continue;const previous=a.vehicles.find(x=>x.id===v.id)||v;model.position.set(lerp(previous.p[0],v.p[0],k),lerp(previous.p[1],v.p[1],k),lerp(previous.p[2],v.p[2],k));model.rotation.set(lerp(previous.pitch,v.pitch,k),previous.yaw+wrapAngle(v.yaw-previous.yaw)*k,lerp(previous.roll,v.roll,k),'YXZ');}
     // Never catch up a burst of old sounds after a slow frame. Only the killer's recent report is audible.
     let shot:Shot|undefined;while(c.shotIndex<c.shots.length&&c.shots[c.shotIndex].t<=t)shot=c.shots[c.shotIndex++];
@@ -87,7 +89,7 @@ export class DeathReplay {
   }
   private start(death:Death){
     this.capture(true);
-    const frames=this.ordered(this.frames,this.frameNext,this.frameCount).filter(f=>f.t>=this.g.time-LOOKBACK&&f.poses.some(p=>p.id===death.killer));
+    const frames=this.ordered(this.frames,this.frameNext,this.frameCount).filter(f=>f.t>=death.at-LOOKBACK&&f.t<=death.at+.12&&f.poses.some(p=>p.id===death.killer));
     if(frames.length<3||frames.at(-1)!.t-frames[0].t<.2)return;
     const last=frames.at(-1)!,killer=last.poses.find(p=>p.id===death.killer)!;
     // Death is confirmed by the host event even if the latest pose arrived a frame earlier.
@@ -101,6 +103,14 @@ export class DeathReplay {
   }
   /** Temporarily switch only render transforms. Restore them synchronously before networking or physics can run. */
   beforeRender():null|(()=>void){
+    if(this.watchingDeath&&['playing','ended'].includes(this.g.state)){
+      const g=this.g,p=g.player,rig=p.rig,oldPos=rig.position.clone(),oldQ=rig.quaternion.clone(),fov=g.camera.fov,body=g.playerPuppet;
+      const focus=p.pos.clone().setY(p.feetY+.65),back=new THREE.Vector3(Math.sin(p.yaw),.4,Math.cos(p.yaw)).normalize();
+      const hit=g.physics.raycast(focus,back,4,G.WORLD);rig.position.copy(focus).addScaledVector(back,hit?Math.max(.6,hit.distance-.25):4);rig.lookAt(focus);rig.rotateY(Math.PI);g.camera.fov=70;g.camera.updateProjectionMatrix();rig.updateMatrixWorld(true);
+      const shadow=body?.shadowOnly;if(body){body.setShadowOnly(false);body.setVisible(true);body.update(0,{pos:p.pos,feetY:p.feetY,yaw:p.yaw+Math.PI,aimYaw:p.yaw+Math.PI,aimPitch:p.pitch,speed:0,alive:false,deathT:g.time-this.pending!.at,deathStyle:p.deathStyle,deathDir:p.deathDir});}document.body.classList.add('death-aftermath');
+      return()=>{rig.position.copy(oldPos);rig.quaternion.copy(oldQ);rig.updateMatrixWorld(true);g.camera.fov=fov;g.camera.updateProjectionMatrix();if(body)body.setShadowOnly(!!shadow);};
+    }
+    document.body.classList.remove('death-aftermath');
     if(!this.active)return null;
     const g=this.g,rig=g.player.rig,fov=g.camera.fov,vmVisible=g.vm.root.visible;
     this.rigPosition.copy(rig.position);this.rigRotation.copy(rig.quaternion);
@@ -109,6 +119,6 @@ export class DeathReplay {
     this.group.visible=true;g.vm.root.visible=false;this.vm.root.visible=!this.riding;
     return()=>{rig.position.copy(this.rigPosition);rig.quaternion.copy(this.rigRotation);g.camera.fov=fov;g.camera.updateProjectionMatrix();rig.updateMatrixWorld(true);for(const o of this.hidden)o.visible=true;this.hidden=[];this.group.visible=false;this.vm.root.visible=false;g.vm.root.visible=vmVisible;};
   }
-  stop(){this.pending=null;if(!this.clip)return;this.clip=null;this.group.visible=false;this.vm.root.visible=false;this.g.audio.setReplayMode(false);document.body.classList.remove('replaying');el('death-replay').classList.add('hidden');this.g.input.reset();}
+  stop(){this.pending=null;document.body.classList.remove('death-aftermath');if(!this.clip)return;this.clip=null;this.group.visible=false;this.vm.root.visible=false;this.g.audio.setReplayMode(false);document.body.classList.remove('replaying');el('death-replay').classList.add('hidden');this.g.input.reset();}
   reset(){this.stop();this.frames.fill(undefined);this.shots.fill(undefined);this.frameCount=this.shotCount=this.frameNext=this.shotNext=0;this.nextCapture=0;this.playedLife=-1;}
 }

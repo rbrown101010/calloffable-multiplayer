@@ -1,4 +1,4 @@
-export type WeaponClass = 'ar' | 'smg' | 'sniper' | 'shotgun' | 'pistol';
+export type WeaponClass = 'ar' | 'smg' | 'sniper' | 'shotgun' | 'pistol' | 'marksman' | 'lmg' | 'launcher';
 export type FireMode = 'auto' | 'semi' | 'bolt' | 'pump';
 
 export interface ModelDef {
@@ -37,6 +37,8 @@ export interface WeaponDef {
   sounds: { shot: string; far: string; reload: string; extra?: string; shotVol?: number };
   model: ModelDef;
   tracer: boolean; flashScale: number; shell: 'rifle' | 'pistol' | 'shotgun' | 'sniper';
+  optic?: 'red-dot' | 'holographic';
+  projectile?: {kind:'rocket'|'grenade';speed:number;gravity:number;radius:number;damage:number;fuse:number};
   killIcon?: string;
 }
 
@@ -151,10 +153,27 @@ export const WEAPONS: Record<string, WeaponDef> = {
 };
 
 export interface Loadout { id: string; name: string; tag: string; desc: string; primary: string; secondary: string; lethal: number; }
-// Weapon variants retain the original detailed models, with distinct ballistics and handling.
-WEAPONS.scarScout = { ...WEAPONS.scarh, id: 'scarScout', name: 'SCAR-H DMR', mode: 'semi', damage: 62, rpm: 280, mag: 12, reserve: 72, adsSpread: 0.035, falloffStart: 65, falloffEnd: 145, recoilPitch: 1.5 * D, adsFov: 42 };
-WEAPONS.akSupport = { ...WEAPONS.ak47, id: 'akSupport', name: 'AK-47 SUPPORT', mag: 60, reserve: 180, speedMul: 0.86, adsTime: 0.34, reloadTime: 3.4, reloadEmptyTime: 4.1, recoilPitch: 0.95 * D };
-WEAPONS.mp5Recon = { ...WEAPONS.mp5, id: 'mp5Recon', name: 'MP5 RECON', rpm: 720, damage: 28, hipSpread: 2.0, recoilPitch: 0.44 * D, speedMul: 1.08, adsTime: 0.13, flashScale: 0.35 };
+// Distinct weapons, each with its own geometry and handling.
+const model=(id:string):ModelDef=>({...WEAPONS.ak47.model,url:'proc:'+id,scale:1,hip:[.22,-.22,-.48],ads:[0,-.13,-.42]});
+WEAPONS.m14={...WEAPONS.scarh,id:'m14',name:'M14 EBR',cls:'marksman',mode:'semi',damage:56,rpm:280,mag:15,reserve:75,adsSpread:.045,falloffStart:65,falloffEnd:150,recoilPitch:1.45*D,adsFov:48,optic:'holographic',speedMul:.88,model:model('m14')};
+WEAPONS.m249={...WEAPONS.ak47,id:'m249',name:'M249 SAW',cls:'lmg',damage:34,rpm:760,mag:80,reserve:160,speedMul:.8,adsTime:.36,reloadTime:4.5,reloadEmptyTime:5,recoilPitch:.95*D,model:model('m249')};
+WEAPONS.p90={...WEAPONS.mp5,id:'p90',name:'P90',rpm:900,damage:25,mag:50,reserve:150,hipSpread:2.1,recoilPitch:.47*D,speedMul:1.19,model:model('p90')};
+WEAPONS.g36={...WEAPONS.scarh,id:'g36',name:'G36C',damage:32,rpm:750,mag:30,reserve:120,recoilPitch:.7*D,speedMul:1.02,adsTime:.2,model:model('g36')};
+WEAPONS.vector={...WEAPONS.mp5,id:'vector',name:'VECTOR .45',damage:23,rpm:1100,mag:25,reserve:150,falloffStart:12,falloffEnd:30,recoilPitch:.4*D,speedMul:1.19,model:model('vector')};
+WEAPONS.rpg7={...WEAPONS.scarh,id:'rpg7',name:'RPG-7',cls:'launcher',mode:'semi',damage:180,headMul:1,mag:1,reserve:4,rpm:30,reloadTime:3.1,reloadEmptyTime:3.1,adsTime:.35,adsFov:62,hipSpread:.8,adsSpread:.15,bloom:0,bloomMax:0,speedMul:.76,bulletSpeed:64,model:model('rpg7'),projectile:{kind:'rocket',speed:64,gravity:1.2,radius:8,damage:180,fuse:5}};
+WEAPONS.m32={...WEAPONS.spas12,id:'m32',name:'M32 GL',cls:'launcher',mode:'semi',damage:120,headMul:1,pellets:1,pelletSpread:0,mag:6,reserve:12,rpm:90,reloadTime:4.1,reloadEmptyTime:4.1,boltTime:0,hipSpread:1.5,adsSpread:.5,speedMul:.84,bulletSpeed:29,model:model('m32'),projectile:{kind:'grenade',speed:29,gravity:13,radius:5.8,damage:125,fuse:3.5}};
+WEAPONS.mp7={...WEAPONS.mp5,id:'mp7',name:'MP7',damage:22,rpm:950,mag:20,reserve:80,falloffStart:9,falloffEnd:24,speedMul:1.19,model:model('mp7')};
+WEAPONS.intervention.speedMul=.68;
+WEAPONS.mp5.speedMul=1.19;
+for(const d of Object.values(WEAPONS))if(['ar','smg','lmg'].includes(d.cls))d.optic='red-dot';
+
+export type Equipment={primary:string;secondary:string};
+export const PRIMARY_WEAPONS=['scarh','ak47','g36','mp5','p90','vector','m14','intervention','spas12','m249','rpg7'];
+export const SECONDARY_WEAPONS=['m1911','deagle','mp7','m32'];
+export const DEFAULT_EQUIPMENT:Equipment={primary:'scarh',secondary:'m1911'};
+export function validateEquipment(value:any):Equipment{return{primary:PRIMARY_WEAPONS.includes(value?.primary)?value.primary:DEFAULT_EQUIPMENT.primary,secondary:SECONDARY_WEAPONS.includes(value?.secondary)?value.secondary:DEFAULT_EQUIPMENT.secondary};}
+export function equipmentLoadout(value:Equipment):Loadout{const e=validateEquipment(value);return{id:'custom',name:WEAPONS[e.primary].name+' + '+WEAPONS[e.secondary].name,tag:'CUSTOM LOADOUT',desc:'Your weapons. Your approach.',...e,lethal:2};}
+export const equipmentLabel=(value:Equipment)=>{const e=validateEquipment(value);return WEAPONS[e.primary].name+' / '+WEAPONS[e.secondary].name;};
 // Automatic weapons recover predictably; damage and fire rates remain class-specific.
 for(const d of Object.values(WEAPONS))if(d.mode==='auto'){d.recoilPitch*=.85;d.recoilYaw*=.72;d.bloom*=.78;d.bloomMax*=.8;d.bloomDecay*=1.15;d.adsTime*=.9;d.viewKick*=.82;}
 export const LOADOUTS: Loadout[] = [
@@ -162,10 +181,10 @@ export const LOADOUTS: Loadout[] = [
   { id: 'sniper', name: 'SNIPER', tag: 'HEADSHOT SPECIALIST', desc: 'INTERVENTION · M1911 · FRAG', primary: 'intervention', secondary: 'm1911', lethal: 1 },
   { id: 'rusher', name: 'RUSHER', tag: 'CLOSE QUARTERS', desc: 'MP5 · DESERT EAGLE · FRAG ×2', primary: 'mp5', secondary: 'deagle', lethal: 2 },
   { id: 'overkill', name: 'OVERKILL', tag: 'TWO PRIMARIES', desc: 'AK-47 · SPAS-12 · FRAG', primary: 'ak47', secondary: 'spas12', lethal: 1 },
-  { id: 'marksman', name: 'MARKSMAN', tag: 'PRECISION', desc: 'SCAR-H DMR · M1911 · FRAG', primary: 'scarScout', secondary: 'm1911', lethal: 1 },
+  { id: 'marksman', name: 'MARKSMAN', tag: 'PRECISION', desc: 'M14 EBR · M1911 · FRAG', primary: 'm14', secondary: 'm1911', lethal: 1 },
   { id: 'breacher', name: 'BREACHER', tag: 'ROOM CLEARING', desc: 'SPAS-12 · MP5 · FRAG ×2', primary: 'spas12', secondary: 'mp5', lethal: 2 },
-  { id: 'support', name: 'SUPPORT', tag: '60 ROUND MAG', desc: 'AK-47 SUPPORT · M1911 · FRAG', primary: 'akSupport', secondary: 'm1911', lethal: 1 },
-  { id: 'recon', name: 'RECON', tag: 'HIGH MOBILITY', desc: 'MP5 RECON · M1911 · FRAG', primary: 'mp5Recon', secondary: 'm1911', lethal: 1 },
+  { id: 'support', name: 'SUPPORT', tag: '60 ROUND MAG', desc: 'M249 SAW · M1911 · FRAG', primary: 'm249', secondary: 'm1911', lethal: 1 },
+  { id: 'recon', name: 'RECON', tag: 'HIGH MOBILITY', desc: 'P90 · M1911 · FRAG', primary: 'p90', secondary: 'm1911', lethal: 1 },
   { id: 'hunter', name: 'HUNTER', tag: 'RANGE + POWER', desc: 'INTERVENTION · SPAS-12 · FRAG', primary: 'intervention', secondary: 'spas12', lethal: 1 },
-  { id: 'vanguard', name: 'VANGUARD', tag: 'FLEXIBLE', desc: 'SCAR-H · MP5 RECON · FRAG ×2', primary: 'scarh', secondary: 'mp5Recon', lethal: 2 },
+  { id: 'vanguard', name: 'VANGUARD', tag: 'FLEXIBLE', desc: 'SCAR-H · P90 · FRAG ×2', primary: 'scarh', secondary: 'p90', lethal: 2 },
 ];

@@ -74,7 +74,7 @@ export class Vehicles {
   reset(){this.detach();this.contacts.clear();for(const v of this.list){v.pos.copy(v.spawn);v.yaw=v.spawnYaw;v.pitch=v.roll=v.speed=v.vy=0;v.driver='';v.target=undefined;v.grounded=true;v.boost=1;v.boostLocked=false;this.place(v);}}
   snapshot():VehicleState[]{return this.list.map(v=>({id:v.id,p:v.pos.toArray(),yaw:v.yaw,pitch:v.pitch,roll:v.roll,speed:v.speed,vy:v.vy,driver:v.driver,grounded:v.grounded}));}
   apply(states:VehicleState[]){for(const s of states||[]){const v=this.list[s.id];if(!v||!this.valid(s))continue;const newlyOurs=s.driver===this.self&&v.driver!==this.self;v.driver=s.driver;if(v.driver!==this.self||newlyOurs){v.target=s;if(newlyOurs)this.copy(v,s);}}}
-  private valid(s:VehicleState){return Array.isArray(s.p)&&s.p.length===3&&s.p.every(Number.isFinite)&&[s.yaw,s.pitch,s.roll,s.speed,s.vy].every(Number.isFinite)&&Math.abs(s.p[0])<119&&Math.abs(s.p[2])<119&&s.p[1]>-8&&s.p[1]<40;}
+  private valid(s:VehicleState){return Array.isArray(s.p)&&s.p.length===3&&s.p.every(Number.isFinite)&&[s.yaw,s.pitch,s.roll,s.speed,s.vy].every(Number.isFinite)&&Math.abs(s.p[0])<this.g.map.bounds-1&&Math.abs(s.p[2])<this.g.map.bounds-1&&s.p[1]>-8&&s.p[1]<40;}
   receiveFrame(from:string,s:VehicleState){
     const v=this.list[s?.id];if(!this.g.online?.isHost||!v||v.driver!==from||!this.valid(s))return;
     const now=performance.now(),elapsed=(now-v.lastPacket)/1000,dt=clamp(elapsed,.066,1);
@@ -133,7 +133,7 @@ export class Vehicles {
     const dx=-Math.sin(v.yaw)*v.speed*dt,dz=-Math.cos(v.yaw)*v.speed*dt;
     const q=new THREE.Quaternion().setFromAxisAngle(UP,v.yaw),oldY=v.pos.y;
     const fraction=this.sweep(v,new THREE.Vector3(dx,0,dz),q,Math.abs(v.speed));
-    v.pos.x=clamp(v.pos.x+dx*fraction,-117.5,117.5);v.pos.z=clamp(v.pos.z+dz*fraction,-117.5,117.5);if(fraction<.9)v.speed*=Math.pow(.08,dt);
+    v.pos.x=clamp(v.pos.x+dx*fraction,-this.g.map.bounds+2.5,this.g.map.bounds-2.5);v.pos.z=clamp(v.pos.z+dz*fraction,-this.g.map.bounds+2.5,this.g.map.bounds-2.5);if(fraction<.9)v.speed*=Math.pow(.08,dt);
     const heights:number[]=[];
     for(const [x,z]of [[-.58,-.87],[.58,-.87],[-.58,.87],[.58,.87]]){
       const at=new THREE.Vector3(x,.95,z).applyQuaternion(q).add(v.pos);
@@ -189,7 +189,7 @@ export class Vehicles {
   }
   private copy(v:ATV,s:VehicleState){v.pos.fromArray(s.p);v.yaw=s.yaw;v.pitch=s.pitch;v.roll=s.roll;v.speed=s.speed;v.vy=s.vy;v.grounded=s.grounded;}
   private place(v:ATV){v.model.position.copy(v.pos);v.model.rotation.set(v.pitch,v.yaw,v.roll,'YXZ');v.body.setTranslation(v.pos,true);v.body.setNextKinematicTranslation(v.pos);const q=new THREE.Quaternion().setFromAxisAngle(UP,v.yaw);v.body.setRotation(q,true);v.body.setNextKinematicRotation(q);}
-  private attach(v:ATV){const g=this.g;this.previous=v.id;this.orbit=0;this.elevation=.27;this.cameraPos.copy(v.pos).add(new THREE.Vector3(Math.sin(v.yaw)*5,2.8,Math.cos(v.yaw)*5));g.player.setCrouch(false);g.player.setMounted(true);g.player.ads=0;g.player.climbing=null;g.gunplay.adsLatched=g.gunplay.adsHeld=false;g.playerPuppet?.setShadowOnly(false);g.vm.root.visible=false;el('weapon').classList.add('hidden');el('streaks').classList.add('hidden');g.hud.centerMsg(vehicleName(v));this.startEngine();}
+  private attach(v:ATV){const g=this.g;this.previous=v.id;this.orbit=0;this.elevation=.27;this.cameraPos.copy(v.pos).add(new THREE.Vector3(Math.sin(v.yaw)*5,2.8,Math.cos(v.yaw)*5));g.player.setCrouch(false);g.player.setMounted(true);g.player.sprinting=false;g.player.sliding=false;g.player.ads=0;g.player.climbing=null;g.gunplay.adsLatched=g.gunplay.adsHeld=false;g.playerPuppet?.setShadowOnly(false);g.vm.root.visible=false;el('weapon').classList.remove('hidden');el('streaks').classList.add('hidden');g.hud.centerMsg(vehicleName(v));this.startEngine();}
   detach(){if(this.previous<0)return;if(this.engine){this.engine.osc.stop();this.engine.harmonic.stop();this.engine.gain.disconnect();this.engine=undefined;}const g=this.g,v=this.list[this.previous];g.player.setMounted(false);g.player.vel.set(0,0,0);if(v&&g.player.alive){const exit=this.exitPoint(v);g.player.teleport(exit);g.player.yaw=v.yaw+this.orbit;g.player.pitch=0;g.player.eyeCur=1.62;}g.playerPuppet?.setShadowOnly(true);g.vm.root.visible=g.player.alive;this.previous=-1;el('weapon').classList.remove('hidden');el('streaks').classList.remove('hidden');this.hud();}
   private exitPoint(v:ATV){const physics=this.g.physics;for(const a of [Math.PI/2,-Math.PI/2,Math.PI,0,Math.PI*.75,-Math.PI*.75]){
       const x=v.pos.x+Math.sin(v.yaw+a)*2.4,z=v.pos.z+Math.cos(v.yaw+a)*2.4;
@@ -215,7 +215,7 @@ export class Vehicles {
     osc.connect(filter);harmonic.connect(filter);filter.connect(gain);gain.connect(this.g.audio.sfx);osc.start();harmonic.start();this.engine={osc,harmonic,gain,filter};
   }
   private engineSound(v:ATV|undefined,enabled:boolean){if(!this.engine||!v)return;const e=this.engine,t=this.g.audio.ctx.currentTime,rpm=35+Math.abs(v.speed)*3.4+(this.g.input.down('KeyW')?12:0);e.osc.frequency.setTargetAtTime(rpm,t,.12);e.harmonic.frequency.setTargetAtTime(rpm*2.01,t,.12);e.filter.frequency.setTargetAtTime(250+Math.abs(v.speed)*18,t,.1);e.gain.gain.setTargetAtTime(enabled?.033+Math.abs(v.speed)*.0012:0,t,.1);}
-  private hud(v?:ATV,hint=''){const text=v?`${Math.round(Math.abs(v.speed)*3.6)} KM/H · ${v.grounded?vehicleName(v):'AIRBORNE'}|${Math.round(v.boost*100)}`:hint;if(text===this.lastHud)return;this.lastHud=text;const node=el('vehicle-hud');node.classList.toggle('hidden',!text);node.innerHTML=v?`<div class="vehicle-name">${v.kind==='motorcycle'?'RAVEN <span>FAST ATTACK MOTORCYCLE</span>':'KESTREL <span>LIGHT RECON ATV</span>'}</div><div class="vehicle-speed">${Math.round(Math.abs(v.speed)*3.6)}<small>KM/H</small></div><div class="vehicle-boost"><i style="width:${v.boost*100}%"></i></div><div class="vehicle-keys">WASD DRIVE &nbsp; SPACE BRAKE &nbsp; SHIFT BOOST &nbsp; E EXIT</div>${!v.grounded?'<b class="airborne">AIRBORNE</b>':''}`:`<div class="vehicle-prompt">${hint}</div>`;}
+  private hud(v?:ATV,hint=''){const text=v?`${Math.round(Math.abs(v.speed)*3.6)} KM/H · ${v.grounded?vehicleName(v):'AIRBORNE'}|${Math.round(v.boost*100)}`:hint;if(text===this.lastHud)return;this.lastHud=text;const node=el('vehicle-hud');node.classList.toggle('hidden',!text);node.innerHTML=v?`<div class="vehicle-name">${v.kind==='motorcycle'?'RAVEN <span>FAST ATTACK MOTORCYCLE</span>':'KESTREL <span>LIGHT RECON ATV</span>'}</div><div class="vehicle-speed">${Math.round(Math.abs(v.speed)*3.6)}<small>KM/H</small></div><div class="vehicle-boost"><i style="width:${v.boost*100}%"></i></div><div class="vehicle-keys">WASD DRIVE · CLICK / F FIRE FORWARD<br>1 / 2 WEAPONS · SPACE BRAKE · SHIFT BOOST · E EXIT</div>${!v.grounded?'<b class="airborne">AIRBORNE</b>':''}`:`<div class="vehicle-prompt">${hint}</div>`;}
 }
 
 function mergeParts(group:THREE.Group){
